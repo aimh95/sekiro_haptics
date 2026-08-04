@@ -73,3 +73,33 @@ SH_TEST(HapticScheduler_Reset_ClearsPendingEffectsAndResetsBackend) {
     SH_CHECK(backend.WaitForEffectCount(1, 350ms) == false);
     SH_CHECK(backend.History().empty());
 }
+
+SH_TEST(HapticScheduler_Reset_RemovesPendingEffect_CancelReturnsFalseAfterward) {
+    // Distinct from the timing-based check above: this proves the pending
+    // effect is actually gone from the scheduler's internal list (Cancel
+    // can no longer find it), not merely that it didn't fire before a
+    // timeout elapsed.
+    std::ostringstream log;
+    MockHapticBackend backend(log);
+    HapticScheduler scheduler(backend);
+
+    HapticEffectId id = scheduler.Schedule(presets::PerfectDeflect(), 500ms);
+    scheduler.Reset();
+
+    SH_CHECK(scheduler.Cancel(id) == false);
+}
+
+SH_TEST(HapticScheduler_Reset_RemovesAllPendingEffects_NoneDispatchAfterReset) {
+    std::ostringstream log;
+    MockHapticBackend backend(log);
+    HapticScheduler scheduler(backend);
+
+    scheduler.Schedule(presets::PerfectDeflect(), 50ms);
+    scheduler.Schedule(presets::PerfectDeflect(), 100ms);
+    scheduler.Schedule(presets::PerfectDeflect(), 150ms);
+    scheduler.Reset();
+
+    // Wait past all three original deadlines; none should have dispatched.
+    SH_CHECK(backend.WaitForEffectCount(1, 300ms) == false);
+    SH_CHECK(backend.History().empty());
+}

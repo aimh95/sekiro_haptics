@@ -22,8 +22,8 @@ public:
     /// `log` must outlive this object. Defaults to std::cout.
     explicit MockHapticBackend(std::ostream& log = DefaultLogStream());
 
-    void SendEffect(const HapticEffect& effect) override;
-    void Reset() override;
+    HapticBackendResult SendEffect(const HapticEffect& effect) override;
+    HapticBackendResult Reset() override;
     bool IsConnected() const override;
 
     /// All effects received via SendEffect, in call order. Reset() does not

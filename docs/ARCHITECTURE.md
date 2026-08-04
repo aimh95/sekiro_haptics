@@ -9,10 +9,19 @@ tangled together the moment a real controller and real game hooks show up:
 2. **How an effect gets delivered to a device** (backend)
 3. **When an effect gets delivered** (scheduling, cancellation, reset)
 
-Nothing in this stage talks to real hardware or the game. That boundary is
-enforced by construction: the only `IHapticBackend` implementation that
-exists is `MockHapticBackend`, and nothing in the codebase reads from or
-injects into a running process.
+Nothing in this stage talks to the game, and nothing in the codebase reads
+from or injects into a running process. The only `IHapticBackend`
+implementation is still `MockHapticBackend` — no code sends a haptic effect
+to real hardware.
+
+A separate, narrower piece *does* now talk to real hardware:
+`HidApiDualSenseTransport` (see `IDualSenseTransport` below) is a USB HID
+transport spike that can enumerate, open, write to, and close a real
+DualSense controller. It is deliberately kept behind its own interface,
+separate from `IHapticBackend`, and does not know what a `HapticEffect` is
+or what bytes a DualSense output report should contain — that keeps "can
+we talk to the device at all" verifiable independently of, and before,
+"do we send it the right bytes."
 
 ## Components
 
@@ -42,9 +51,18 @@ definition instead of being duplicated wherever it's triggered.
 
 Three-method abstract interface:
 
-- `SendEffect(const HapticEffect&)` — play one effect now
-- `Reset()` — stop and return to neutral
-- `IsConnected() const`
+- `SendEffect(const HapticEffect&) -> HapticBackendResult` — play one
+  effect now
+- `Reset() -> HapticBackendResult` — stop and return to neutral
+- `IsConnected() const -> bool`
+
+`SendEffect` and `Reset` return a `HapticBackendResult`
+(`Success` / `NotConnected` / `DeviceError`) rather than `void`, so that a
+backend talking to real hardware — which can be unplugged, busy, or
+otherwise unable to service a request — can tell callers explicitly when a
+request didn't land, instead of failing silently. `MockHapticBackend`
+always returns `Success`; a real backend is expected to use the other
+values once one exists.
 
 This is the seam where a real DualSense/HID backend would plug in later,
 without any caller-facing code changing. `SendEffect` is documented to
@@ -54,7 +72,7 @@ blocking the caller.
 
 ### `MockHapticBackend` (`include/sekiro_haptics/MockHapticBackend.hpp`)
 
-The only backend implementation in this stage. It:
+The only `IHapticBackend` implementation in this stage. It:
 
 - Logs every effect to an injectable `std::ostream` (defaults to
   `std::cout`)
@@ -92,6 +110,95 @@ Design notes:
 - The destructor stops the worker and joins it, so a `HapticScheduler`
   never outlives its own thread.
 
+### `IDualSenseTransport` (`include/sekiro_haptics/IDualSenseTransport.hpp`)
+
+A separate, narrower interface from `IHapticBackend`. Where
+`IHapticBackend` is "play this `HapticEffect`", `IDualSenseTransport` is
+"talk to this USB HID device": it owns HID device discovery and device
+lifetime only, and knows nothing about `HapticEffect`, motor intensities,
+or what a DualSense output report should contain.
+
+- `EnumerateCandidates() -> vector<HidDeviceInfo>` — enumerate connected
+  HID devices and return the ones that look like a Sony DualSense (matched
+  by vendor/product id)
+- `Open(path) -> TransportResult` — open one device by its OS path
+- `Close()` — close the open device, if any; safe to call when nothing is
+  open or more than once
+- `IsOpen() const -> bool`
+- `WriteOutputReport(report, length) -> TransportResult` — write raw,
+  caller-constructed bytes; the transport does not interpret them
+
+This split exists so that **HID access and device lifetime belong to the
+transport**, while **DualSense packet construction stays outside it** — a
+future `DualSenseBackend` (implementing `IHapticBackend`) would build
+report bytes and hand them to an `IDualSenseTransport` to write, but the
+transport itself has no wire-format knowledge to get wrong.
+`TransportResult` (`Success` / `NotFound` / `OpenFailed` / `WriteFailed` /
+`NotOpen`) mirrors `HapticBackendResult`'s explicit-failure approach.
+
+### `HidApiDualSenseTransport` (`include/sekiro_haptics/HidApiDualSenseTransport.hpp`)
+
+The only `IDualSenseTransport` implementation, and the only code in this
+repo that touches real hardware. Built on
+[HIDAPI](https://github.com/libusb/hidapi) (see "New dependency" below).
+USB only — Bluetooth is not implemented.
+
+- `EnumerateCandidates()` calls `hid_enumerate()` filtered to Sony's vendor
+  id (`0x054C`) and the DualSense's USB product id (`0x0CE6`) — public
+  USB-IF identifiers (the same ones the Linux kernel's `hid-playstation`
+  driver matches on), not part of any DualSense wire protocol.
+- `Open`/`Close` wrap `hid_open_path`/`hid_close`. `Close()` is a no-op
+  when nothing is open, and idempotent.
+- `WriteOutputReport` wraps `hid_write`, translating hidapi's `-1`-on-error
+  convention into `TransportResult::WriteFailed` instead of throwing or
+  crashing — this covers a device being unplugged mid-session.
+- Every operation logs vendor id, product id, path, connection result, and
+  write result to an injectable `std::ostream` (default `std::cout`), the
+  same pattern `MockHapticBackend` uses for its log.
+- `hid_init()`/`hid_exit()` are process-global HIDAPI calls; this class
+  reference-counts them across all live instances (a static mutex-guarded
+  counter) so one transport's destructor can't tear down HIDAPI while
+  another instance, or the same instance mid-shutdown, is still using it.
+  Combined with the destructor always calling `Close()` first, this is what
+  keeps device disconnection and program termination from crashing.
+
+`DualSenseBackend` (a full `IHapticBackend` implementation that maps
+`HapticEffect`/`MotorIntensity` to output reports and calls through this
+transport) is intentionally **not** implemented yet — see "Explicitly out
+of scope" below.
+
+### `dualsense_protocol::BuildRumbleReport` (`include/sekiro_haptics/DualSenseUsbReport.hpp`)
+
+Once the transport above was verified against a real controller, a single
+manual question remained: does writing an actual output report make it
+rumble? `BuildRumbleReport(leftMotor, rightMotor)` builds the minimal
+64-byte DualSense USB output report needed to answer that — report id
+`0x02`, the "set main motors" flag bits, and the two raw 0-255 motor
+bytes. It touches no LED, audio, or adaptive-trigger fields (left zeroed),
+and it does no HID/USB I/O itself; it is pure data construction, called by
+`apps/dualsense_rumble_test/main.cpp` and handed to
+`IDualSenseTransport::WriteOutputReport`. This keeps "DualSense packet
+construction outside the transport" intact — the transport still has no
+idea what the bytes it writes mean.
+
+The byte layout is not invented: it follows the DualSense USB output
+report as implemented in
+[flok/pydualsense](https://github.com/flok/pydualsense) (MIT licensed),
+specifically `pydualsense.py`'s `prepareReport()` — report id `0x02`
+(`OUTPUT_REPORT_USB`), flag byte `outReport[1]` bits `0x01|0x02` ("set the
+main motors"), and motor bytes at offsets 3 (right) and 4 (left) of a
+64-byte (`output_report_length`) report. No pydualsense code was copied;
+`BuildRumbleReport` is fresh code that reproduces only the byte
+offsets/values needed for rumble.
+
+`test_dualsense_usb_report.cpp` covers this with hardware-independent
+tests (report length/id, motor byte offsets, flag bits, and that
+unrelated bytes stay zero). `apps/dualsense_rumble_test/main.cpp` is a
+manual hardware test — it opens the first enumerated DualSense, resends a
+rumble report for ~1.5s, then sends an all-zero report and closes. It is
+not part of `ctest` because "did the controller actually buzz" isn't
+something an automated assertion can check.
+
 ### Console test app (`apps/console_test/main.cpp`)
 
 Wires a `MockHapticBackend` to a `HapticScheduler` and schedules
@@ -110,14 +217,45 @@ pass/fail counts, returning non-zero on any failure so `ctest` picks it up.
 
 Scheduler tests rely on `WaitForEffectCount` with generous timeouts rather
 than fixed sleeps, to avoid flakiness from thread scheduling jitter.
+`test_dualsense_transport.cpp` exercises `HidApiDualSenseTransport`'s error
+paths and lifetime safety (invalid path, write-when-not-open, repeated
+close, construct/destruct ordering) — none of its checks require a real
+DualSense to be attached, so the suite stays green on CI or any dev
+machine. It is built and linked only when
+`SEKIRO_HAPTICS_BUILD_DUALSENSE_TRANSPORT` is on (the default).
+
+## New dependency: HIDAPI
+
+[HIDAPI](https://github.com/libusb/hidapi) (`libusb/hidapi`) is fetched at
+configure time via CMake `FetchContent`, pinned to release tag
+`hidapi-0.15.0`, and built as a static library — nothing is vendored or
+copied into this repository. On Windows it compiles to the `winapi`
+backend, which talks to `hid.dll`/`cfgmgr32.dll` via `LoadLibrary` at
+runtime, so no extra system import libraries need to be linked.
+
+License: HIDAPI is offered under the user's choice of the GNU GPL v3, a
+BSD-style license, or the original "HIDAPI license" (a short, permissive,
+attribution-preserving license — see `LICENSE-orig.txt` in the HIDAPI
+repository). This project relies on the permissive option; it links
+against HIDAPI rather than copying any of its source, so its license terms
+apply only to the fetched HIDAPI build, not to this repository.
 
 ## Explicitly out of scope (this stage)
 
-- **Real DualSense access.** No HID/USB/Bluetooth code exists. A real
-  backend would implement `IHapticBackend` and live alongside
-  `MockHapticBackend`; nothing else would need to change.
-- **HID packet construction.** Follows from the above — there is no wire
-  format anywhere in this codebase.
+- **Adaptive-trigger / LED / audio packet fields.** `BuildRumbleReport`
+  covers rumble only; every other DualSense output-report field (adaptive
+  triggers, LEDs, mic mute, speaker) is left zeroed/untouched. No packet
+  bytes beyond the minimal rumble set have been invented.
+- **`DualSenseBackend`.** No `IHapticBackend` implementation talks to real
+  hardware yet. `HidApiDualSenseTransport` (device I/O) and
+  `BuildRumbleReport` (packet bytes) both exist and are wired together
+  only by the manual `dualsense_rumble_test` app, not by anything
+  implementing `IHapticBackend` — mapping `HapticEffect`/`MotorIntensity`
+  to motor bytes on a background thread, the way `MockHapticBackend` does
+  synchronously today, is still not done.
+- **Bluetooth.** `HidApiDualSenseTransport` only opens devices HIDAPI
+  reports as USB; there is no Bluetooth HID or DualSense-over-Bluetooth
+  handling.
 - **Sekiro hooking/injection.** There is no process attachment, memory
   reading, or event capture. `HapticEffectType` anticipates a few Sekiro
   events by name, but nothing produces them from the game.
@@ -129,6 +267,11 @@ than fixed sleeps, to avoid flakiness from thread scheduling jitter.
 - A real event source (log-file tailing, memory reading, or a companion
   tool) that calls into `HapticScheduler` — this is the piece that would
   need to hook into Sekiro, out of scope here.
-- A real hardware backend implementing `IHapticBackend`.
+- `DualSenseBackend`: an `IHapticBackend` implementation that maps
+  `HapticEffect`/`MotorIntensity` to `BuildRumbleReport` calls and writes
+  them through an `IDualSenseTransport`, so real hardware can plug into
+  `HapticScheduler` the same way `MockHapticBackend` does today.
+- Adaptive-trigger and LED output-report fields, once rumble-only usage is
+  proven out.
 - Effect queuing/priority policy in `HapticScheduler` if simultaneous
   effects need blending rather than independent dispatch.

@@ -1,0 +1,2 @@
+add_executable(sekiro_haptics_dualsense_rumble_test main.cpp)
+target_link_libraries(sekiro_haptics_dualsense_rumble_test PRIVATE sekiro_haptics_dualsense_transport)

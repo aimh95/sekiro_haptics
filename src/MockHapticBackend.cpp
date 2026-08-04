@@ -10,7 +10,7 @@ std::ostream& MockHapticBackend::DefaultLogStream() {
 
 MockHapticBackend::MockHapticBackend(std::ostream& log) : log_(log) {}
 
-void MockHapticBackend::SendEffect(const HapticEffect& effect) {
+HapticBackendResult MockHapticBackend::SendEffect(const HapticEffect& effect) {
     std::lock_guard<std::mutex> lock(mutex_);
     history_.push_back(effect);
 
@@ -23,12 +23,14 @@ void MockHapticBackend::SendEffect(const HapticEffect& effect) {
     log_ << '\n';
 
     cv_.notify_all();
+    return HapticBackendResult::Success;
 }
 
-void MockHapticBackend::Reset() {
+HapticBackendResult MockHapticBackend::Reset() {
     std::lock_guard<std::mutex> lock(mutex_);
     ++resetCount_;
     log_ << "[MockHapticBackend] Reset\n";
+    return HapticBackendResult::Success;
 }
 
 bool MockHapticBackend::IsConnected() const {

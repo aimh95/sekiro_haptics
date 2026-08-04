@@ -12,8 +12,9 @@ SH_TEST(MockHapticBackend_SendEffect_RecordsHistory) {
     std::ostringstream log;
     MockHapticBackend backend(log);
 
-    backend.SendEffect(presets::PerfectDeflect());
+    HapticBackendResult result = backend.SendEffect(presets::PerfectDeflect());
 
+    SH_CHECK(result == HapticBackendResult::Success);
     auto history = backend.History();
     SH_CHECK(history.size() == 1);
     SH_CHECK(history[0].type == HapticEffectType::PerfectDeflect);
@@ -33,9 +34,10 @@ SH_TEST(MockHapticBackend_Reset_IncrementsResetCountWithoutClearingHistory) {
     MockHapticBackend backend(log);
 
     backend.SendEffect(presets::PerfectDeflect());
-    backend.Reset();
+    HapticBackendResult result = backend.Reset();
     backend.Reset();
 
+    SH_CHECK(result == HapticBackendResult::Success);
     SH_CHECK(backend.ResetCount() == 2);
     SH_CHECK(backend.History().size() == 1);
 }
