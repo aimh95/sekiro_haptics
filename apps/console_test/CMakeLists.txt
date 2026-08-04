@@ -1,0 +1,2 @@
+add_executable(sekiro_haptics_console main.cpp)
+target_link_libraries(sekiro_haptics_console PRIVATE sekiro_haptics)
