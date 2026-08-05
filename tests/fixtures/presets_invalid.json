@@ -1,0 +1,22 @@
+{
+  "presets": [
+    {
+      "presetId": "clamped_v1",
+      "displayName": "Clamped Preset",
+      "legacyRumble": {
+        "left": 1.5,
+        "right": -0.2,
+        "durationMs": 50
+      }
+    },
+    {
+      "presetId": "bad_duration_v1",
+      "displayName": "Bad Duration Preset",
+      "legacyRumble": {
+        "left": 0.5,
+        "right": 0.5,
+        "durationMs": 0
+      }
+    }
+  ]
+}

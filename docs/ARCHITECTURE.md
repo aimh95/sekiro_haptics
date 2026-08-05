@@ -224,6 +224,111 @@ DualSense to be attached, so the suite stays green on CI or any dev
 machine. It is built and linked only when
 `SEKIRO_HAPTICS_BUILD_DUALSENSE_TRANSPORT` is on (the default).
 
+### The replay pipeline: `GameSignal` → `GameEvent` → preset → `HapticScheduler`
+
+Everything above this point answers "how does an already-decided
+`HapticEffect` reach a backend." Nothing above it answers "how does the
+system decide a `HapticEffect` should happen at all." The replay pipeline
+is the piece that fills that gap — entirely against recorded traces and
+`MockHapticBackend`, since neither Sekiro nor a real DualSense are
+available in this environment:
+
+```
+Recorded raw game signals
+  → ReplaySignalSource
+  → GameEventDetector
+  → GameEvent
+  → EventMapping
+  → HapticPreset
+  → HapticScheduler
+  → MockHapticBackend
+```
+
+Each arrow is a real interface boundary, not just a pipeline stage drawn
+for documentation purposes:
+
+- **`GameSignal`** (`include/sekiro_haptics/signals/GameSignal.hpp`) is a
+  single raw, timestamped observation — a stable string `signal` id (e.g.
+  `"manual.perfect_deflect"`), a stringified `value`, and an `extra` map for
+  anything else a trace line carried. It knows nothing about what any of
+  that *means*. See docs/trace-format.md for the full on-disk schema and,
+  importantly, what these signal names are and are not claiming about real
+  Sekiro internals (nothing — no addresses, offsets, or engine IDs).
+- **`IGameSignalSource`** (`include/sekiro_haptics/signals/IGameSignalSource.hpp`)
+  abstracts "a stream of `GameSignal`s in timestamp order." Two
+  implementations exist: `ReplaySignalSource` (backed by a JSONL trace file
+  via `trace::TraceReader`) and `VectorSignalSource` (in-memory, for
+  tests). Both support `Reset()` to replay from the start. A future
+  `LiveSekiroSignalSource` would implement the same interface on top of
+  real process observation and would return `false` from `Reset()` (a live
+  stream can't rewind) — that class does not exist; this is a documented
+  extension point only.
+- **`IGameEventDetector`** (`include/sekiro_haptics/events/IGameEventDetector.hpp`)
+  turns `GameSignal`s into `GameEvent`s: `OnSignal()` is called once per
+  signal and may emit zero or more events; a default-no-op `Flush()` exists
+  as a seam for a future detector that needs to correlate several signals
+  across a time window and flush pending state once the stream ends. The
+  only implementation is `ManualLabelEventDetector`
+  (`include/sekiro_haptics/events/ManualLabelEventDetector.hpp`), which is
+  explicitly **not a real Sekiro detector** — it only recognizes
+  hand-authored `manual.perfect_deflect`/`manual.take_damage` trace labels,
+  purely to exercise the rest of the pipeline deterministically. See
+  docs/testing.md.
+- **`GameEvent`** (`include/sekiro_haptics/events/GameEvent.hpp`) describes
+  *what happened* (`gameId`, `eventId`, `timestamp`, `metadata`) and
+  nothing about what should be felt.
+- **`EventMapping`**/**`HapticPreset`**
+  (`include/sekiro_haptics/presets/EventMapping.hpp`,
+  `include/sekiro_haptics/presets/HapticPreset.hpp`) split "which preset
+  does this event use" from "what does that preset actually feel like" —
+  `EventMapping{gameId, eventId, presetId}` and
+  `HapticPreset{presetId, displayName, HapticEffect effect}`. Both are
+  normally loaded from JSON via `PresetRepository`/`MappingRepository`
+  (`include/sekiro_haptics/presets/{Preset,Mapping}Repository.hpp`) —
+  see docs/trace-format.md for the schema and validation policy. The two
+  repositories are loaded independently and do not cross-validate each
+  other; that's `ReplayPipeline`'s job, since it's the one component that
+  actually needs both at once.
+- **`ReplayPipeline`** (`include/sekiro_haptics/pipeline/ReplayPipeline.hpp`)
+  wires a detector, both repositories, a `HapticScheduler`, and an
+  `IHapticBackend` together. `ProcessSignal()` runs one signal through
+  detection → mapping lookup → preset lookup → a connectivity check →
+  `scheduler.Schedule()`, returning a `PipelineStepOutcome` per event (or a
+  single `NoEventDetected` outcome, which is a normal result, not an
+  error). Every failure mode is a typed `PipelineError`
+  (`NoMappingForEvent`, `MappingReferencesMissingPreset`,
+  `BackendNotConnected`) on that outcome, matching the
+  `HapticBackendResult`/`TransportResult` convention elsewhere in this repo
+  — never exceptions, never silent failure. `RunReplayLoop()` drains an
+  `IGameSignalSource` fully, recording (not aborting on) any malformed
+  trace line. `ReplayPipeline` itself never checks whether its signals came
+  from a real game or a replay file — nothing in its code path is
+  replay-specific.
+- **`apps/replay_cli`** is the developer-facing entry point:
+  `sekiro_haptics_replay --trace <path> --presets <path> --mappings <path>
+  [--fast]` loads both repositories, replays a trace through the pipeline
+  against a `MockHapticBackend`, and prints detected events, resolved
+  presets, dispatched effects, and a final summary. `--fast` uses
+  `RunReplayLoop` directly (sleep-free, deterministic — the same helper the
+  test suite uses); without it, the CLI sleeps between signals based on
+  their timestamp deltas to approximate real-time playback.
+
+### Migration: from `HapticEffectType` to `presetId`
+
+`HapticEffectType`, `presets::PerfectDeflect()`, and every existing call
+site (`apps/console_test/main.cpp`, `test_haptic_effect.cpp`,
+`test_scheduler.cpp`) are unchanged and remain fully supported — this is
+not a deprecation with a planned removal date, just a statement about
+where new growth goes.
+
+New game events should **not** get a new `HapticEffectType` enumerator.
+They should get a new `presetId` entry in a presets JSON file (mapped to a
+`gameId`/`eventId` in a mappings JSON file) — see docs/trace-format.md.
+This is why `HapticPreset::effect.type` is always `HapticEffectType::Generic`
+for JSON-loaded presets: identity now lives in the string `presetId`, which
+scales to arbitrarily many future events without an enum (and a recompile)
+per event, the way `HapticEffectType` would have required.
+
 ## New dependency: HIDAPI
 
 [HIDAPI](https://github.com/libusb/hidapi) (`libusb/hidapi`) is fetched at
@@ -257,21 +362,45 @@ apply only to the fetched HIDAPI build, not to this repository.
   reports as USB; there is no Bluetooth HID or DualSense-over-Bluetooth
   handling.
 - **Sekiro hooking/injection.** There is no process attachment, memory
-  reading, or event capture. `HapticEffectType` anticipates a few Sekiro
-  events by name, but nothing produces them from the game.
+  reading, or event capture. `IGameSignalSource`/`GameSignal` anticipate a
+  future live source by name and interface shape only; `ManualLabelEventDetector`
+  is explicitly test-only (see docs/testing.md). No speculative Sekiro
+  memory addresses, offsets, or internal event IDs appear anywhere in this
+  repo.
+- **Real multi-signal correlation.** `IGameEventDetector::Flush()` exists
+  as an interface seam; no detector in this repo buffers signals or
+  correlates across a time window.
+- **PCM haptics / adaptive-trigger commands from the pipeline.**
+  `HapticPreset` deliberately holds a full `HapticEffect` (not bare
+  left/right floats) so a future preset kind could be added without
+  changing `GameEvent` or `EventMapping`, but no such kind exists yet —
+  today's presets are legacy rumble only, same as everywhere else in this
+  repo.
 - **Networking / DSX integration.** No sockets, no external protocol
   support.
+- **GUI.** `apps/replay_cli` is a console tool.
 
 ## Likely next steps (not implemented)
 
-- A real event source (log-file tailing, memory reading, or a companion
-  tool) that calls into `HapticScheduler` — this is the piece that would
-  need to hook into Sekiro, out of scope here.
+- A real, live event source: a `LiveSekiroSignalSource` implementing
+  `IGameSignalSource` on top of actual process observation — this is the
+  piece that would need to hook into Sekiro, out of scope here. The replay
+  pipeline (this document, "The replay pipeline" section above) exists
+  specifically so this is the *only* new piece a live source would need;
+  `IGameEventDetector`, `EventMapping`, `PresetRepository`,
+  `HapticScheduler`, and `ReplayPipeline` itself would not change.
+- A real, correlating `IGameEventDetector` that looks at more than one
+  signal (`ManualLabelEventDetector` is test-only and single-signal).
 - `DualSenseBackend`: an `IHapticBackend` implementation that maps
   `HapticEffect`/`MotorIntensity` to `BuildRumbleReport` calls and writes
   them through an `IDualSenseTransport`, so real hardware can plug into
-  `HapticScheduler` the same way `MockHapticBackend` does today.
+  `HapticScheduler` the same way `MockHapticBackend` does today. This is
+  also what the replay pipeline would dispatch through instead of
+  `MockHapticBackend`, once it exists — no pipeline code would need to
+  change, since `ReplayPipeline` only depends on `IHapticBackend`.
 - Adaptive-trigger and LED output-report fields, once rumble-only usage is
   proven out.
+- A PCM-capable or adaptive-trigger-capable `HapticPreset` representation,
+  once `DualSenseBackend` supports more than legacy rumble.
 - Effect queuing/priority policy in `HapticScheduler` if simultaneous
   effects need blending rather than independent dispatch.

@@ -16,6 +16,15 @@ add_library(sekiro_haptics STATIC
     src/HapticScheduler.cpp
     src/IDualSenseTransport.cpp
     src/DualSenseUsbReport.cpp
+    src/Json.cpp
+    src/events/ManualLabelEventDetector.cpp
+    src/signals/IGameSignalSource.cpp
+    src/signals/ReplaySignalSource.cpp
+    src/signals/VectorSignalSource.cpp
+    src/presets/PresetRepository.cpp
+    src/presets/MappingRepository.cpp
+    src/replay/TraceJsonl.cpp
+    src/pipeline/ReplayPipeline.cpp
 )
 target_include_directories(sekiro_haptics PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -70,6 +79,7 @@ endif()
 
 if(SEKIRO_HAPTICS_BUILD_APPS)
     add_subdirectory(apps/console_test)
+    add_subdirectory(apps/replay_cli)
     if(TARGET sekiro_haptics_dualsense_transport)
         add_subdirectory(apps/dualsense_rumble_test)
     endif()

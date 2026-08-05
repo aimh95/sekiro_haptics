@@ -1,0 +1,9 @@
+{
+  "mappings": [
+    {
+      "gameId": "sekiro",
+      "eventId": "combat.take_damage",
+      "presetId": "does_not_exist_v1"
+    }
+  ]
+}

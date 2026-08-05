@@ -103,3 +103,39 @@ SH_TEST(HapticScheduler_Reset_RemovesAllPendingEffects_NoneDispatchAfterReset) {
     SH_CHECK(backend.WaitForEffectCount(1, 300ms) == false);
     SH_CHECK(backend.History().empty());
 }
+
+SH_TEST(HapticScheduler_Schedule_EarlierEffectPreemptsExistingSleep) {
+    // The worker thread sleeps until the earliest pending effect's
+    // deadline. If a second, EARLIER effect is scheduled while the worker
+    // is already asleep waiting on a later one, the worker must wake up
+    // and re-evaluate rather than sleeping through the new, closer
+    // deadline. Schedule() notifying the condition variable on every call
+    // is what makes this work (see src/HapticScheduler.cpp).
+    std::ostringstream log;
+    MockHapticBackend backend(log);
+    HapticScheduler scheduler(backend);
+
+    scheduler.Schedule(presets::PerfectDeflect(), 500ms); // worker goes to sleep until +500ms
+    scheduler.Schedule(presets::PerfectDeflect(), 20ms);  // should preempt that sleep
+
+    // If preemption didn't happen, the worker would still be asleep until
+    // ~500ms; a generous-but-well-under-500ms timeout proves it woke early.
+    SH_CHECK(backend.WaitForEffectCount(1, 200ms));
+}
+
+SH_TEST(HapticScheduler_Destructor_JoinsWorkerThreadCleanly) {
+    // A pending effect with a long delay guarantees the worker thread is
+    // still alive (and sleeping) when the scheduler goes out of scope.
+    // The destructor must stop and join that thread promptly rather than
+    // waiting out the pending delay or leaking the thread.
+    auto start = std::chrono::steady_clock::now();
+    {
+        std::ostringstream log;
+        MockHapticBackend backend(log);
+        HapticScheduler scheduler(backend);
+        scheduler.Schedule(presets::PerfectDeflect(), 5s);
+    }
+    auto elapsed = std::chrono::steady_clock::now() - start;
+
+    SH_CHECK(elapsed < 500ms);
+}

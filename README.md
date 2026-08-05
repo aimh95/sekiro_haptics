@@ -21,10 +21,18 @@ records them in memory.
 
 ```
 include/sekiro_haptics/   Public headers (the library's API)
-src/                       Library implementation
+  signals/, events/, presets/, replay/, pipeline/
+                           Game-signal -> event -> preset -> scheduler
+                           pipeline (replay-only; see docs/ARCHITECTURE.md)
+src/                       Library implementation (mirrors include/)
 apps/console_test/         Console app: triggers a PerfectDeflect effect
+apps/replay_cli/           Replays a JSONL trace through the full pipeline
+config/                    Example presets.json / mappings.json for the CLI
 tests/                     Unit tests (no external test framework)
+tests/fixtures/            JSONL traces and preset/mapping JSON used by tests
 docs/ARCHITECTURE.md       Design notes and rationale
+docs/trace-format.md       JSONL trace / presets / mappings JSON schemas
+docs/testing.md            Test conventions and levels
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit
@@ -53,6 +61,26 @@ cmake --build build
 
 This triggers a single `PerfectDeflect` effect through `HapticScheduler`
 into a `MockHapticBackend` and prints what was received.
+
+## Run the replay CLI
+
+```sh
+./build/apps/replay_cli/sekiro_haptics_replay \
+  --trace tests/fixtures/perfect_deflect.jsonl \
+  --presets config/presets.json \
+  --mappings config/mappings.json \
+  --fast
+```
+
+Replays a recorded JSONL signal trace through the full
+signal → event detector → mapping → preset → `HapticScheduler` →
+`MockHapticBackend` pipeline and prints detected events, resolved presets,
+dispatched effects, and a summary. `--fast` skips the delays between
+signal timestamps; omit it for an approximate real-time replay. See
+[docs/trace-format.md](docs/trace-format.md) for the trace/config JSON
+schemas and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how this
+pipeline fits together (it is replay-only -- no real Sekiro event
+detection).
 
 ## Run the tests
 

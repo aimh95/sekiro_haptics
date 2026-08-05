@@ -1,0 +1,2 @@
+add_executable(sekiro_haptics_replay main.cpp)
+target_link_libraries(sekiro_haptics_replay PRIVATE sekiro_haptics)

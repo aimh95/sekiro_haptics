@@ -1,0 +1,14 @@
+{
+  "mappings": [
+    {
+      "gameId": "sekiro",
+      "eventId": "combat.perfect_deflect",
+      "presetId": "sharp_metal_v1"
+    },
+    {
+      "gameId": "sekiro",
+      "eventId": "combat.take_damage",
+      "presetId": "dull_thud_v1"
+    }
+  ]
+}

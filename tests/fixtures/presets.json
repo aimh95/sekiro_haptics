@@ -1,0 +1,13 @@
+{
+  "presets": [
+    {
+      "presetId": "sharp_metal_v1",
+      "displayName": "Sharp Metal Impact",
+      "legacyRumble": {
+        "left": 0.45,
+        "right": 0.85,
+        "durationMs": 28
+      }
+    }
+  ]
+}

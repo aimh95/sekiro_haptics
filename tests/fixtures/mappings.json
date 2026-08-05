@@ -1,0 +1,9 @@
+{
+  "mappings": [
+    {
+      "gameId": "sekiro",
+      "eventId": "combat.perfect_deflect",
+      "presetId": "sharp_metal_v1"
+    }
+  ]
+}
