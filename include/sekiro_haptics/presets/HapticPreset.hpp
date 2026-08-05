@@ -11,11 +11,11 @@ namespace sekiro_haptics {
 /// HapticPreset is the bridge between an abstract GameEvent and a concrete
 /// HapticEffect: `presetId` is what EventMapping references, `effect` is
 /// what actually gets handed to HapticScheduler::Schedule(). Presets are
-/// normally loaded from JSON via PresetRepository (see docs/trace-format.md
+/// normally loaded from JSON via PresetRepository (see docs/03-trace-format.md
 /// for the on-disk schema) rather than constructed as enum-typed presets
 /// the way presets::PerfectDeflect() is -- new game events get a new
 /// presetId in config, not a new HapticEffectType enumerator. See the
-/// migration note in docs/ARCHITECTURE.md.
+/// migration note in docs/01-architecture.md.
 ///
 /// The current hardware only supports legacy left/right rumble, so `effect`
 /// is the only representation today. `effect.type` is always

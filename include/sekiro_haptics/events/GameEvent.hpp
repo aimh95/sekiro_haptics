@@ -15,7 +15,7 @@ namespace sekiro_haptics {
 /// -> presetId) and HapticPreset's job (presetId -> HapticEffect). Keeping
 /// these separate means a new game event never requires touching
 /// HapticEffect/HapticEffectType -- see the migration note in
-/// docs/ARCHITECTURE.md.
+/// docs/01-architecture.md.
 struct GameEvent {
     std::string gameId;
     std::string eventId;

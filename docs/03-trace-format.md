@@ -1,8 +1,10 @@
 # Trace and config JSON formats
 
+*Doc 3 of 4 — previous: [02-dualsense-output.md](02-dualsense-output.md), next: [04-testing.md](04-testing.md).*
+
 This document is the schema reference for the three JSON-based formats the
 replay pipeline uses: the JSONL signal trace, the presets file, and the
-mappings file. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) for how these
+mappings file. See [docs/01-architecture.md](01-architecture.md) for how these
 feed into `ReplaySignalSource` → `IGameEventDetector` → `EventMapping` →
 `HapticPreset` → `HapticScheduler`.
 
@@ -21,7 +23,7 @@ it's allowed to go -- in a few hundred lines. There was no real complexity
 saved by scoping the parser down to "flat only," and this project's own bar
 is "no unnecessary dependencies." The hand-rolled parser is original code,
 so there are no license or attribution concerns (unlike, e.g., the vendored
-byte-layout reference cited in `docs/ARCHITECTURE.md`'s HIDAPI section);
+byte-layout reference cited in `docs/01-architecture.md`'s HIDAPI section);
 this repository does not currently have a `LICENSE` file at all, and adding
 one is unrelated to this change.
 
@@ -30,7 +32,7 @@ streaming parse, or strict schema validation beyond what's practical to
 hand-roll, [nlohmann/json](https://github.com/nlohmann/json) (MIT license,
 single header) is the natural choice -- it can be pulled in via CMake
 `FetchContent` the same way HIDAPI already is for the DualSense transport
-(see `docs/ARCHITECTURE.md`).
+(see `docs/01-architecture.md`).
 
 **Known limitations** (by design, not oversights): `ParseJson` does not
 support `\uXXXX` unicode escapes, comments, or trailing commas. A JSON
@@ -98,7 +100,7 @@ manual.take_damage
 
 Only `manual.perfect_deflect` and `manual.take_damage` currently have a
 consumer (`ManualLabelEventDetector`, which is test-only -- see
-`docs/testing.md`). The others exist as placeholders for future signal
+`docs/04-testing.md`). The others exist as placeholders for future signal
 observations a real detector would need to look at.
 
 ## Presets JSON format
@@ -141,7 +143,7 @@ loaded independently -- one bad entry does not fail the whole file.
 | `legacyRumble.left`/`right` absent | Defaults to `0.0`; no warning |
 
 `presetId` is the schema's growth path for new game events -- see the
-"Migration" section of `docs/ARCHITECTURE.md`. The current hardware only
+"Migration" section of `docs/01-architecture.md`. The current hardware only
 supports legacy left/right rumble, so `legacyRumble` is the only preset
 representation today; it is deliberately nested under its own key (rather
 than flattened onto the entry) so a future preset kind (PCM haptics,

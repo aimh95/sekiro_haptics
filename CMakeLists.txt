@@ -42,7 +42,7 @@ endif()
 
 # HIDAPI-based USB transport spike for a real DualSense controller. Kept as
 # its own target so the core library and MockHapticBackend-based tests never
-# need to depend on HIDAPI or real hardware (see docs/ARCHITECTURE.md).
+# need to depend on HIDAPI or real hardware (see docs/01-architecture.md).
 option(SEKIRO_HAPTICS_BUILD_DUALSENSE_TRANSPORT "Build the HIDAPI-based DualSense USB transport" ON)
 
 if(SEKIRO_HAPTICS_BUILD_DUALSENSE_TRANSPORT)

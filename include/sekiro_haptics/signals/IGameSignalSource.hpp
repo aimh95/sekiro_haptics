@@ -26,7 +26,7 @@ const char* ToString(SignalSourceResult result);
 /// interface on top of process observation (XInput reads, memory
 /// reads, hooks, etc.) -- none of that exists in this repo. Such a source
 /// would return `false` from Reset() (a live stream can't rewind); replay
-/// sources return `true`. See docs/ARCHITECTURE.md.
+/// sources return `true`. See docs/01-architecture.md.
 class IGameSignalSource {
 public:
     virtual ~IGameSignalSource() = default;

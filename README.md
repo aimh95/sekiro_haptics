@@ -23,19 +23,19 @@ records them in memory.
 include/sekiro_haptics/   Public headers (the library's API)
   signals/, events/, presets/, replay/, pipeline/
                            Game-signal -> event -> preset -> scheduler
-                           pipeline (replay-only; see docs/ARCHITECTURE.md)
+                           pipeline (replay-only; see docs/01-architecture.md)
 src/                       Library implementation (mirrors include/)
 apps/console_test/         Console app: triggers a PerfectDeflect effect
 apps/replay_cli/           Replays a JSONL trace through the full pipeline
 config/                    Example presets.json / mappings.json for the CLI
 tests/                     Unit tests (no external test framework)
 tests/fixtures/            JSONL traces and preset/mapping JSON used by tests
-docs/ARCHITECTURE.md       Design notes and rationale
-docs/trace-format.md       JSONL trace / presets / mappings JSON schemas
-docs/testing.md            Test conventions and levels
+docs/01-architecture.md       Design notes and rationale
+docs/03-trace-format.md       JSONL trace / presets / mappings JSON schemas
+docs/04-testing.md            Test conventions and levels
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit
+See [docs/01-architecture.md](docs/01-architecture.md) for how the pieces fit
 together.
 
 ## Requirements
@@ -77,8 +77,8 @@ signal → event detector → mapping → preset → `HapticScheduler` →
 `MockHapticBackend` pipeline and prints detected events, resolved presets,
 dispatched effects, and a summary. `--fast` skips the delays between
 signal timestamps; omit it for an approximate real-time replay. See
-[docs/trace-format.md](docs/trace-format.md) for the trace/config JSON
-schemas and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how this
+[docs/03-trace-format.md](docs/03-trace-format.md) for the trace/config JSON
+schemas and [docs/01-architecture.md](docs/01-architecture.md) for how this
 pipeline fits together (it is replay-only -- no real Sekiro event
 detection).
 

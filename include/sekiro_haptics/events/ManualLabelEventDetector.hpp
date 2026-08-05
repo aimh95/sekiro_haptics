@@ -8,7 +8,7 @@ namespace sekiro_haptics {
 /// pipeline (mapping, presets, scheduling) without any real Sekiro event
 /// detection. This is NOT a real Sekiro detector -- it only recognizes
 /// hand-authored "manual.*" trace labels, e.g. from a human annotating a
-/// recorded trace. See docs/testing.md.
+/// recorded trace. See docs/04-testing.md.
 ///
 /// Behavior:
 ///   signal == "manual.perfect_deflect", value == "true"

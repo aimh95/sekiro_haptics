@@ -57,7 +57,7 @@ struct PipelineStepOutcome {
 /// came from a real game or a replay file -- it only depends on
 /// IGameEventDetector, PresetRepository, MappingRepository, HapticScheduler,
 /// and IHapticBackend, none of which are replay-specific. See
-/// docs/ARCHITECTURE.md.
+/// docs/01-architecture.md.
 class ReplayPipeline {
 public:
     /// None of the referenced objects are owned; all must outlive this

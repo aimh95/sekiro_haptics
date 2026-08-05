@@ -1,5 +1,7 @@
 # Architecture
 
+*Doc 1 of 4 — start here. Next: [02-dualsense-output.md](02-dualsense-output.md).*
+
 ## Goals for this stage
 
 Establish a clean separation between three concerns that will otherwise get
@@ -251,7 +253,7 @@ for documentation purposes:
   single raw, timestamped observation — a stable string `signal` id (e.g.
   `"manual.perfect_deflect"`), a stringified `value`, and an `extra` map for
   anything else a trace line carried. It knows nothing about what any of
-  that *means*. See docs/trace-format.md for the full on-disk schema and,
+  that *means*. See docs/03-trace-format.md for the full on-disk schema and,
   importantly, what these signal names are and are not claiming about real
   Sekiro internals (nothing — no addresses, offsets, or engine IDs).
 - **`IGameSignalSource`** (`include/sekiro_haptics/signals/IGameSignalSource.hpp`)
@@ -273,7 +275,7 @@ for documentation purposes:
   explicitly **not a real Sekiro detector** — it only recognizes
   hand-authored `manual.perfect_deflect`/`manual.take_damage` trace labels,
   purely to exercise the rest of the pipeline deterministically. See
-  docs/testing.md.
+  docs/04-testing.md.
 - **`GameEvent`** (`include/sekiro_haptics/events/GameEvent.hpp`) describes
   *what happened* (`gameId`, `eventId`, `timestamp`, `metadata`) and
   nothing about what should be felt.
@@ -285,7 +287,7 @@ for documentation purposes:
   `HapticPreset{presetId, displayName, HapticEffect effect}`. Both are
   normally loaded from JSON via `PresetRepository`/`MappingRepository`
   (`include/sekiro_haptics/presets/{Preset,Mapping}Repository.hpp`) —
-  see docs/trace-format.md for the schema and validation policy. The two
+  see docs/03-trace-format.md for the schema and validation policy. The two
   repositories are loaded independently and do not cross-validate each
   other; that's `ReplayPipeline`'s job, since it's the one component that
   actually needs both at once.
@@ -323,7 +325,7 @@ where new growth goes.
 
 New game events should **not** get a new `HapticEffectType` enumerator.
 They should get a new `presetId` entry in a presets JSON file (mapped to a
-`gameId`/`eventId` in a mappings JSON file) — see docs/trace-format.md.
+`gameId`/`eventId` in a mappings JSON file) — see docs/03-trace-format.md.
 This is why `HapticPreset::effect.type` is always `HapticEffectType::Generic`
 for JSON-loaded presets: identity now lives in the string `presetId`, which
 scales to arbitrarily many future events without an enum (and a recompile)
@@ -364,7 +366,7 @@ apply only to the fetched HIDAPI build, not to this repository.
 - **Sekiro hooking/injection.** There is no process attachment, memory
   reading, or event capture. `IGameSignalSource`/`GameSignal` anticipate a
   future live source by name and interface shape only; `ManualLabelEventDetector`
-  is explicitly test-only (see docs/testing.md). No speculative Sekiro
+  is explicitly test-only (see docs/04-testing.md). No speculative Sekiro
   memory addresses, offsets, or internal event IDs appear anywhere in this
   repo.
 - **Real multi-signal correlation.** `IGameEventDetector::Flush()` exists

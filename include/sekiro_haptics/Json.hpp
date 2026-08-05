@@ -25,7 +25,7 @@ enum class JsonType {
 /// config) is flat objects, at most one array of objects, and at most one
 /// level of nested object -- a recursive-descent parser handles that (and
 /// arbitrary deeper nesting, for free) in a few hundred lines. See
-/// docs/trace-format.md for the license/dependency rationale and the
+/// docs/03-trace-format.md for the license/dependency rationale and the
 /// documented fallback (nlohmann/json) if a future schema needs more than
 /// this supports.
 ///

@@ -1,7 +1,7 @@
 // Developer CLI: replays a recorded JSONL signal trace through the full
 // GameSignal -> event detector -> mapping -> preset -> HapticScheduler ->
 // MockHapticBackend pipeline. Never touches a real game or real hardware --
-// see docs/ARCHITECTURE.md and docs/trace-format.md.
+// see docs/01-architecture.md and docs/03-trace-format.md.
 //
 // Usage:
 //   sekiro_haptics_replay --trace <path.jsonl> --presets <presets.json>

@@ -18,7 +18,7 @@ inline constexpr std::uint8_t kUsbOutputReportId = 0x02;
 /// deliberately narrow: packet *construction* only, no HID/USB access.
 /// Byte layout (report id, the "set main motors" flag bits, and the motor
 /// offsets) follows the DualSense USB output report as documented in
-/// flok/pydualsense (MIT licensed) -- see docs/ARCHITECTURE.md.
+/// flok/pydualsense (MIT licensed) -- see docs/01-architecture.md.
 ///
 /// `leftMotor`/`rightMotor` are raw 0-255 motor strengths, not normalized
 /// [0.0, 1.0] intensities; converting a HapticEffect's MotorIntensity to

@@ -32,7 +32,7 @@ struct PresetLoadOutcome {
 
 /// Loads and looks up HapticPreset instances by `presetId`.
 ///
-/// Validation policy for LoadFromFile (see docs/trace-format.md for the
+/// Validation policy for LoadFromFile (see docs/03-trace-format.md for the
 /// full schema): an entry missing "presetId", "displayName", or
 /// "legacyRumble" (or with a non-positive "durationMs") is rejected --
 /// recorded in `errors` and not added. An entry whose "left"/"right"

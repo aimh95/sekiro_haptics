@@ -23,7 +23,7 @@ const char* ToString(HapticBackendResult result);
 ///
 /// Implementations own all device-specific detail (HID, USB, Bluetooth,
 /// vendor SDKs, ...). This project currently ships only MockHapticBackend;
-/// a real DualSense backend is out of scope for now (see docs/ARCHITECTURE.md).
+/// a real DualSense backend is out of scope for now (see docs/01-architecture.md).
 class IHapticBackend {
 public:
     virtual ~IHapticBackend() = default;

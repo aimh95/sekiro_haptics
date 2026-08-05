@@ -10,7 +10,7 @@
 namespace sekiro_haptics::trace {
 
 /// Version of the on-disk JSONL trace schema this reader/writer implements.
-/// Bump this and document the change in docs/trace-format.md if the
+/// Bump this and document the change in docs/03-trace-format.md if the
 /// required-field set or ordering policy below ever changes.
 inline constexpr int kSchemaVersion = 1;
 
@@ -29,7 +29,7 @@ enum class TraceReadResult {
 const char* ToString(TraceReadResult result);
 
 /// Reads a newline-delimited JSON (JSONL) trace file, one GameSignal per
-/// non-blank line. See docs/trace-format.md for the full schema.
+/// non-blank line. See docs/03-trace-format.md for the full schema.
 ///
 /// Required fields per line: `timestampUs` (JSON number, microseconds) and
 /// `signal` (non-empty JSON string). `value` is optional (defaults to an

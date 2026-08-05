@@ -15,7 +15,7 @@ namespace sekiro_haptics {
 /// "player.hp_delta" or "manual.perfect_deflect" -- these names describe
 /// what this project's trace format records, not any real Sekiro internals
 /// (no memory addresses, offsets, or engine-specific IDs are implied). See
-/// docs/trace-format.md for the full schema and docs/ARCHITECTURE.md for
+/// docs/03-trace-format.md for the full schema and docs/01-architecture.md for
 /// how this fits with GameEvent (an interpreted event) and HapticEffect (a
 /// haptic waveform).
 ///
