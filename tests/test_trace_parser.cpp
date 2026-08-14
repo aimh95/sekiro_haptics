@@ -133,6 +133,27 @@ SH_TEST(TraceReader_Rewind_ReplaysFromBeginning) {
     SH_CHECK(signal.signal == "player.block_state");
 }
 
+SH_TEST(TraceReader_ReadNext_ValidSignalValidityValue_ParsesSuccessfullyIntoExtra) {
+    TraceReader reader(Fixture("signal_validity_unavailable.jsonl"));
+
+    GameSignal signal;
+    TraceReadResult result = reader.ReadNext(signal);
+
+    SH_CHECK(result == TraceReadResult::Success);
+    SH_CHECK(signal.extra.at("validity") == "unavailable");
+}
+
+SH_TEST(TraceReader_ReadNext_InvalidSignalValidityValue_RejectsLine) {
+    TraceReader reader(Fixture("invalid_signal_validity.jsonl"));
+
+    GameSignal signal;
+    std::string error;
+    TraceReadResult result = reader.ReadNext(signal, &error);
+
+    SH_CHECK(result == TraceReadResult::InvalidSignalValidity);
+    SH_CHECK(error.find("line 1") != std::string::npos);
+}
+
 SH_TEST(TraceWriter_WriteSignal_RoundTripsThroughTraceReader) {
     std::string path = (std::filesystem::temp_directory_path() / "sh_trace_roundtrip_test.jsonl").string();
 
@@ -148,11 +169,15 @@ SH_TEST(TraceWriter_WriteSignal_RoundTripsThroughTraceReader) {
         SH_CHECK(writer.WriteSignal(original));
     }
 
-    TraceReader reader(path);
-    SH_CHECK(reader.IsOpen());
-
     GameSignal roundTripped;
-    TraceReadResult result = reader.ReadNext(roundTripped);
+    TraceReadResult result;
+    {
+        // Scoped so the reader's file handle is closed before remove()
+        // below -- an open handle blocks deletion on Windows.
+        TraceReader reader(path);
+        SH_CHECK(reader.IsOpen());
+        result = reader.ReadNext(roundTripped);
+    }
 
     SH_CHECK(result == TraceReadResult::Success);
     SH_CHECK(roundTripped.timestamp == original.timestamp);

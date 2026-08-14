@@ -1,0 +1,2 @@
+add_executable(sekiro_haptics_replay_hardware main.cpp)
+target_link_libraries(sekiro_haptics_replay_hardware PRIVATE sekiro_haptics_dualsense_transport)

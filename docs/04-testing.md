@@ -1,6 +1,6 @@
 # Testing conventions
 
-*Doc 4 of 4 — previous: [03-trace-format.md](03-trace-format.md).*
+*Doc 4 of 5 — previous: [03-trace-format.md](03-trace-format.md), next: [05-process-access.md](05-process-access.md).*
 
 This document covers how tests in this repository are named, organized,
 and leveled, and what to add when a new game event is introduced. It
@@ -45,6 +45,16 @@ self-registers and runs as part of that single binary.
 | **Integration** | Multiple components wired together beyond a single replay run (none exist yet beyond the replay-level tests above) | Nothing external |
 | **Hardware-smoke** | Real USB HID I/O against a real DualSense (`apps/dualsense_rumble_test`, `test_dualsense_transport.cpp`'s error-path checks) | A real DualSense for the manual smoke app; the automated `test_dualsense_transport.cpp` checks themselves do not require one (see `docs/01-architecture.md`) |
 | **Game-acceptance** | Real Sekiro, a real live event source, real hardware, a human judging feel/latency | Sekiro + real hardware + a human -- does not exist yet; see the template below for when it does |
+
+**Determinism scope:** `test_replay_determinism.cpp`'s 100-run identical-output
+guarantee covers `RunReplayLoop`/`ReplaySignalSource`/`ManualLabelEventDetector`
+only -- that path never calls `sleep_for()` or reads the wall clock, it only
+consumes `GameSignal::timestamp` values already present in the trace. It says
+nothing about `apps/replay_cli`'s real-time playback mode (no `--fast`),
+which paces itself with actual `std::this_thread::sleep_for()` calls between
+signals -- the sleep *duration* is computed from trace timestamp deltas, but
+the sleep itself is still subject to OS scheduling, not deterministic down to
+the microsecond. Do not describe that mode as "not wall-clock dependent."
 
 Everything in **Unit** and **Replay** runs in `sekiro_haptics_tests` today
 and requires neither Sekiro nor real hardware -- this is the whole point of
@@ -94,8 +104,9 @@ or a comment referencing this document):
 
 | Runs in CI without Sekiro or hardware | Requires real controller and/or real game |
 |---|---|
-| All of `test_trace_parser.cpp`, `test_replay_signal_source.cpp`, `test_event_detector.cpp`, `test_profile_resolution.cpp`, `test_pipeline.cpp`, `test_scheduler.cpp`, `test_haptic_effect.cpp`, `test_mock_backend.cpp`, `test_dualsense_usb_report.cpp` | `apps/dualsense_rumble_test` (manual rumble smoke test) |
-| `test_dualsense_transport.cpp`'s error-path checks (invalid path, not-open writes, construct/destruct safety -- see `docs/01-architecture.md`) | Any future `HW-###` game-acceptance case (real Sekiro + real DualSense + a human) |
+| All of `test_trace_parser.cpp`, `test_replay_signal_source.cpp`, `test_event_detector.cpp`, `test_profile_resolution.cpp`, `test_pipeline.cpp`, `test_scheduler.cpp`, `test_haptic_effect.cpp`, `test_mock_backend.cpp`, `test_dualsense_usb_report.cpp`, `test_trace_metadata.cpp`, `test_trace_validator.cpp`, `test_expected_event_repository.cpp`, `test_replay_comparator.cpp`, `test_replay_determinism.cpp`, `test_scheduler_duration.cpp`, `test_dualsense_legacy_backend.cpp`, `test_replay_hardware_backend.cpp` (fake `IDualSenseTransport`) | `apps/dualsense_rumble_test` (manual rumble smoke test) |
+| `test_dualsense_transport.cpp`'s error-path checks (invalid path, not-open writes, construct/destruct safety -- see `docs/01-architecture.md`) | `apps/replay_hardware` (manual hardware replay smoke test -- see `docs/03-trace-format.md`) |
+| `test_win32_process_reader.cpp` (fake `IWin32Api`), `test_win32_process_reader_integration.cpp` (real, but self-contained, non-game helper process), `test_executable_identity.cpp` (plain temp files, no process at all), `test_aob_pattern.cpp`, `test_aob_scanner.cpp`, `test_rip_relative.cpp`, `test_aob_positive_negative_fixtures.cpp` (fake `IProcessReader`), and `test_aob_scanner_integration.cpp` (real, self-contained helper process) -- see `docs/05-process-access.md` | Any future `HW-###` game-acceptance case (real Sekiro + real DualSense + a human) |
 | `apps/replay_cli` against any trace fixture | |
 
 ## Future acceptance-test template

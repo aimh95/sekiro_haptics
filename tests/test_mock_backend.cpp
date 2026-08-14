@@ -53,3 +53,12 @@ SH_TEST(MockHapticBackend_WaitForEffectCount_ReturnsFalseOnTimeoutWhenNothingArr
     MockHapticBackend backend(log);
     SH_CHECK(backend.WaitForEffectCount(1, 20ms) == false);
 }
+
+SH_TEST(MockHapticBackend_WaitForResetCount_ReturnsTrueOnceResetCalled) {
+    std::ostringstream log;
+    MockHapticBackend backend(log);
+
+    SH_CHECK(backend.WaitForResetCount(1, 20ms) == false);
+    backend.Reset();
+    SH_CHECK(backend.WaitForResetCount(1, 1s));
+}

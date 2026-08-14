@@ -1,5 +1,8 @@
 #include "sekiro_haptics/pipeline/ReplayPipeline.hpp"
 
+#include "sekiro_haptics/replay/TraceValidator.hpp"
+#include "sekiro_haptics/signals/ReplaySignalSource.hpp"
+
 namespace sekiro_haptics {
 
 const char* ToString(PipelineStage stage) {
@@ -124,6 +127,22 @@ std::size_t RunReplayLoop(IGameSignalSource& source, ReplayPipeline& pipeline,
 
     pipeline.Flush(outOutcomes);
     return successCount;
+}
+
+bool RunReplayLoopStrict(const std::string& tracePath, ReplayPipeline& pipeline,
+                          std::vector<PipelineStepOutcome>& outOutcomes,
+                          std::vector<std::string>& outMalformedLines,
+                          std::vector<std::string>& outValidationErrors) {
+    trace::TraceValidationOutcome validation =
+        trace::ValidateTraceFile(tracePath, trace::LegacyTracePolicy::RejectLegacy);
+    if (!validation.ok) {
+        outValidationErrors = std::move(validation.errors);
+        return false;
+    }
+
+    ReplaySignalSource source(tracePath);
+    RunReplayLoop(source, pipeline, outOutcomes, outMalformedLines);
+    return true;
 }
 
 } // namespace sekiro_haptics

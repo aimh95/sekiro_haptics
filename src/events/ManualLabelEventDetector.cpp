@@ -20,6 +20,11 @@ void ManualLabelEventDetector::OnSignal(const GameSignal& signal, std::vector<Ga
         return;
     }
 
+    auto validityIt = signal.extra.find("validity");
+    if (validityIt != signal.extra.end() && validityIt->second != "valid") {
+        return;
+    }
+
     if (signal.signal == "manual.perfect_deflect") {
         outEvents.push_back(MakeEvent(signal, "combat.perfect_deflect"));
     } else if (signal.signal == "manual.take_damage") {

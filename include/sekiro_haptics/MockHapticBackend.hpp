@@ -42,6 +42,12 @@ public:
     /// assertions racy.
     bool WaitForEffectCount(std::size_t count, std::chrono::milliseconds timeout) const;
 
+    /// Blocks until Reset() has been called at least `count` times, or
+    /// `timeout` elapses. Returns true if the count was reached. Same
+    /// purpose as WaitForEffectCount, for asserting on HapticScheduler's
+    /// asynchronous duration-based auto-stop without a fixed sleep.
+    bool WaitForResetCount(int count, std::chrono::milliseconds timeout) const;
+
 private:
     static std::ostream& DefaultLogStream();
 

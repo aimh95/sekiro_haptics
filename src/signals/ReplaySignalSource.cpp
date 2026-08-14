@@ -19,6 +19,7 @@ SignalSourceResult ReplaySignalSource::Next(GameSignal& outSignal, std::string* 
         case trace::TraceReadResult::MissingTimestamp:
         case trace::TraceReadResult::MissingSignal:
         case trace::TraceReadResult::OutOfOrderTimestamp:
+        case trace::TraceReadResult::InvalidSignalValidity:
         case trace::TraceReadResult::IoError:
             return SignalSourceResult::MalformedInput;
     }

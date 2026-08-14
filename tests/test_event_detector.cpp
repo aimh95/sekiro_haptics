@@ -63,6 +63,39 @@ SH_TEST(ManualLabelEventDetector_DuplicateManualLabels_EmitEventEachTime) {
     SH_CHECK(events.size() == 2);
 }
 
+SH_TEST(ManualLabelEventDetector_DisabledValiditySignal_EmitsNoEventEvenWithTrueValue) {
+    ManualLabelEventDetector detector;
+    std::vector<GameEvent> events;
+
+    GameSignal signal = Signal("manual.perfect_deflect", "true");
+    signal.extra["validity"] = "disabled";
+    detector.OnSignal(signal, events);
+
+    SH_CHECK(events.empty());
+}
+
+SH_TEST(ManualLabelEventDetector_UnavailableValiditySignal_EmitsNoEventEvenWithTrueValue) {
+    ManualLabelEventDetector detector;
+    std::vector<GameEvent> events;
+
+    GameSignal signal = Signal("manual.take_damage", "true");
+    signal.extra["validity"] = "unavailable";
+    detector.OnSignal(signal, events);
+
+    SH_CHECK(events.empty());
+}
+
+SH_TEST(ManualLabelEventDetector_ExplicitlyValidValiditySignal_StillEmitsEvent) {
+    ManualLabelEventDetector detector;
+    std::vector<GameEvent> events;
+
+    GameSignal signal = Signal("manual.perfect_deflect", "true");
+    signal.extra["validity"] = "valid";
+    detector.OnSignal(signal, events);
+
+    SH_CHECK(events.size() == 1);
+}
+
 SH_TEST(ManualLabelEventDetector_EmittedEvent_HasExpectedGameIdAndTimestamp) {
     ManualLabelEventDetector detector;
     std::vector<GameEvent> events;

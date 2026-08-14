@@ -13,6 +13,7 @@ add_library(sekiro_haptics STATIC
     src/Presets.cpp
     src/IHapticBackend.cpp
     src/MockHapticBackend.cpp
+    src/DualSenseLegacyBackend.cpp
     src/HapticScheduler.cpp
     src/IDualSenseTransport.cpp
     src/DualSenseUsbReport.cpp
@@ -24,7 +25,19 @@ add_library(sekiro_haptics STATIC
     src/presets/PresetRepository.cpp
     src/presets/MappingRepository.cpp
     src/replay/TraceJsonl.cpp
+    src/replay/TraceMetadata.cpp
+    src/replay/TraceValidator.cpp
+    src/replay/ExpectedEventRepository.cpp
+    src/replay/ReplayComparator.cpp
     src/pipeline/ReplayPipeline.cpp
+    src/process/Win32Api.cpp
+    src/process/Win32ProcessReader.cpp
+    src/process/ExecutableIdentity.cpp
+    src/process/AobPattern.cpp
+    src/process/AobScanner.cpp
+    src/process/RipRelative.cpp
+    src/process/SignatureProfileRepository.cpp
+    src/process/AddressResolver.cpp
 )
 target_include_directories(sekiro_haptics PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -33,6 +46,11 @@ target_compile_features(sekiro_haptics PUBLIC cxx_std_20)
 
 find_package(Threads REQUIRED)
 target_link_libraries(sekiro_haptics PUBLIC Threads::Threads)
+
+# bcrypt: Windows' built-in cryptography API (CNG), used only for the
+# SHA-256 executable-identity hash in src/process/ExecutableIdentity.cpp.
+# No third-party crypto library added.
+target_link_libraries(sekiro_haptics PRIVATE bcrypt)
 
 if(MSVC)
     target_compile_options(sekiro_haptics PRIVATE /W4)
@@ -82,6 +100,7 @@ if(SEKIRO_HAPTICS_BUILD_APPS)
     add_subdirectory(apps/replay_cli)
     if(TARGET sekiro_haptics_dualsense_transport)
         add_subdirectory(apps/dualsense_rumble_test)
+        add_subdirectory(apps/replay_hardware)
     endif()
 endif()
 

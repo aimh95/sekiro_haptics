@@ -22,6 +22,8 @@ const char* ToString(TraceReadResult result) {
             return "MissingSignal";
         case TraceReadResult::OutOfOrderTimestamp:
             return "OutOfOrderTimestamp";
+        case TraceReadResult::InvalidSignalValidity:
+            return "InvalidSignalValidity";
         case TraceReadResult::IoError:
             return "IoError";
     }
@@ -171,6 +173,14 @@ TraceReadResult TraceReader::ReadNext(GameSignal& outSignal, std::string* outErr
             continue;
         }
         signal.extra[member.first] = JsonScalarToString(member.second);
+    }
+
+    auto validityIt = signal.extra.find("validity");
+    if (validityIt != signal.extra.end() && validityIt->second != "valid" && validityIt->second != "unavailable" &&
+        validityIt->second != "disabled") {
+        outSignal = signal;
+        SetError(outError, lineNumber_, "invalid \"validity\" value: \"" + validityIt->second + "\"");
+        return TraceReadResult::InvalidSignalValidity;
     }
 
     bool outOfOrder = haveLastTimestamp_ && signal.timestamp < lastTimestamp_;

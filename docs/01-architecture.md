@@ -1,6 +1,6 @@
 # Architecture
 
-*Doc 1 of 4 — start here. Next: [02-dualsense-output.md](02-dualsense-output.md).*
+*Doc 1 of 5 — start here. Next: [02-dualsense-output.md](02-dualsense-output.md).*
 
 ## Goals for this stage
 

@@ -18,6 +18,12 @@ namespace sekiro_haptics {
 ///   anything else (including a manual.* signal with a non-"true" value)
 ///       -> no event
 ///
+/// A signal whose extra["validity"] is present and not "valid" (i.e.
+/// "unavailable" or "disabled" -- see TraceJsonl.hpp) never produces an
+/// event, regardless of its value: a reading the source couldn't actually
+/// take is never treated as grounds for an event, even if it happens to
+/// carry value == "true".
+///
 /// Repeated identical labels each emit their own event; there is no
 /// de-duplication. `GameEvent::timestamp` copies the signal's timestamp;
 /// `metadata["sourceSignal"]` records which signal produced the event.

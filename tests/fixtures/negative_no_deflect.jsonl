@@ -1,0 +1,6 @@
+{"timestampUs":1000,"signal":"player.animation","value":"idle"}
+{"timestampUs":1010,"signal":"enemy.attack_contact","value":"true"}
+{"timestampUs":1020,"signal":"player.block_state","value":"active"}
+{"timestampUs":1030,"signal":"player.hp_delta","value":"-3"}
+{"timestampUs":1040,"signal":"manual.perfect_deflect","value":"false"}
+{"timestampUs":1050,"signal":"player.block_state","value":"inactive"}

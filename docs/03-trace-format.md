@@ -1,6 +1,6 @@
 # Trace and config JSON formats
 
-*Doc 3 of 4 — previous: [02-dualsense-output.md](02-dualsense-output.md), next: [04-testing.md](04-testing.md).*
+*Doc 3 of 5 — previous: [02-dualsense-output.md](02-dualsense-output.md), next: [04-testing.md](04-testing.md).*
 
 This document is the schema reference for the three JSON-based formats the
 replay pipeline uses: the JSONL signal trace, the presets file, and the
@@ -102,6 +102,134 @@ Only `manual.perfect_deflect` and `manual.take_damage` currently have a
 consumer (`ManualLabelEventDetector`, which is test-only -- see
 `docs/04-testing.md`). The others exist as placeholders for future signal
 observations a real detector would need to look at.
+
+### Signal validity
+
+A signal line may carry an optional `validity` field distinguishing a real
+reading from a source that couldn't observe this value right now -- so
+"couldn't read this" is never confused with "read this as 0/false":
+
+```json
+{"timestampUs":1000,"signal":"player.hp_delta","value":"0","validity":"unavailable"}
+```
+
+If present, `validity` must be exactly one of `"valid"` (the implicit
+default when the field is absent), `"unavailable"`, or `"disabled"`; any
+other value is a parse error (`TraceReadResult::InvalidSignalValidity`).
+The value is preserved into `GameSignal::extra["validity"]` verbatim, the
+same way any other unrecognized field would be -- there is no dedicated
+`GameSignal` struct field for this. `ManualLabelEventDetector` treats a
+signal whose validity is anything other than absent/`"valid"` as never
+producing an event, regardless of its `value`.
+
+## Trace metadata sidecar and schema versioning
+
+`sekiro_haptics::trace::kSchemaVersion` (`TraceJsonl.hpp`) is this
+project's current JSONL schema version. A trace's version and provenance
+are **not** embedded in the JSONL body -- they live in an optional
+companion file, `<tracePath>.meta.json`, loaded by
+`LoadTraceSourceMetadata()` (`include/sekiro_haptics/replay/TraceMetadata.hpp`):
+
+```json
+{
+  "schemaVersion": 1,
+  "sourceType": "replay",
+  "generatorVersion": "1.0.0"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `schemaVersion` | yes, if the sidecar exists at all | Must be a version this reader supports (currently only `1`); an unrecognized value is `TraceMetadataLoadResult::UnsupportedSchemaVersion` -- never silently treated as current. |
+| `sourceType` | yes | `"capture"` or `"replay"`. |
+| `generatorVersion` | yes | Free-form version string of whatever tool wrote this trace. |
+| `executableIdentity` | no | Reserved slot for a future executable fingerprint (hash, file version, ...). **Not populated with real data anywhere in this repository** -- see the "Explicitly out of scope" note below. |
+
+**Compatibility policy is an explicit, per-call choice -- never
+auto-detected.** `ValidateTraceFile()` (below) takes a required
+`LegacyTracePolicy`:
+
+- `RejectLegacy`: a trace with **no** sidecar file at all is a hard
+  validation failure (`"MissingMetadata: ..."` in `errors`), exactly like
+  any other invalid trace. `RunReplayLoopStrict` always uses this --
+  unconditionally, not configurably -- so it never silently accepts an
+  unversioned trace.
+- `AllowLegacy`: a trace with no sidecar is treated as legacy/unversioned
+  -- equivalent to `schemaVersion == 1` -- and loads exactly as this
+  project always has. `RunReplayLoop` (no validation call at all) is the
+  simplest way to get this tolerance; calling `ValidateTraceFile(path,
+  AllowLegacy)` directly is the way to get it *with* full body validation
+  still applied.
+
+Either way, every fixture that predates this metadata format
+(`perfect_deflect.jsonl`, `normal_block.jsonl`, ...) needs no changes and
+keeps passing -- through `RunReplayLoop`, or through `ValidateTraceFile`
+with `AllowLegacy`. What changed is that nothing gets that tolerance by
+accident: a caller either picks the permissive function/policy on purpose,
+or gets `RunReplayLoopStrict`'s unconditional `RejectLegacy`.
+
+A sidecar that *does* exist, under either policy, must be complete and
+declare a supported version, or the whole trace is rejected (see
+`ValidateTraceFile` below) -- an explicitly-declared-but-unrecognized
+version is never guessed at.
+
+**Out of scope:** no real executable hash, AOB signature, memory address,
+or offset is computed or stored anywhere by this metadata format. This is
+scaffolding for a real Sekiro `LiveSekiroSignalSource`/capture pipeline to
+eventually plug real values into -- see `SEK-READ-001`.
+
+## Whole-trace validation (`ValidateTraceFile`)
+
+`sekiro_haptics::trace::ValidateTraceFile(tracePath, legacyPolicy)`
+(`include/sekiro_haptics/replay/TraceValidator.hpp`) fully checks a
+trace's metadata sidecar per `legacyPolicy` and every line of its JSONL
+body *before* any detector, mapping/preset resolution, scheduler, or
+backend sees a single signal from it.
+
+Two call paths exist side by side, and which one a caller uses is the
+whole compatibility-policy decision described above:
+
+- **`RunReplayLoopStrict`** (`ReplayPipeline.hpp`) -- calls
+  `ValidateTraceFile` with `LegacyTracePolicy::RejectLegacy`, always.
+  `pipeline`/`backend` are never touched if validation fails for *any*
+  reason, including a missing sidecar. **This is the path any future
+  integration with real hardware (`OUT-LEGACY-002`) must use** -- it is
+  the only one of the two that can't silently accept an unversioned or
+  malformed trace.
+- **`RunReplayLoop`** (`ReplayPipeline.hpp`) -- no validation call at all;
+  this is the legacy-compatibility path, with its existing per-line
+  tolerance (one malformed JSONL line is skipped and logged; the rest of
+  the trace still replays). Right for a human-supervised tool like
+  `apps/replay_cli` tolerating an occasional bad line in an
+  otherwise-good recording, or a caller that has explicitly decided it
+  wants to keep reading unversioned traces.
+
+## Expected-events fixture and replay comparison
+
+Separate from the raw JSONL signal trace, an **expectation fixture**
+records what a detector *should* produce for that trace -- ground truth,
+not another signal source, so a hand-authored expectation is never mistaken
+for a real observation:
+
+```json
+{
+  "expectedEvents": [
+    {"gameId": "sekiro", "eventId": "combat.perfect_deflect", "timestampUs": 1040}
+  ]
+}
+```
+
+Loaded by `ExpectedEventRepository::LoadFromFile()`
+(`include/sekiro_haptics/replay/ExpectedEventRepository.hpp`), following the
+same per-entry-independent validation policy as presets/mappings.
+
+`sekiro_haptics::replay::CompareEvents()`
+(`include/sekiro_haptics/replay/ReplayComparator.hpp`) compares a
+detector's actual `GameEvent` output against a set of `ExpectedEvent`s and
+reports detection count, missed events, false positives, duplicates, and
+per-match latency. See that header's doc comment for the exact matching
+rule (same `gameId`/`eventId`, actual timestamp in `[expected,
+expected + maxLatency]`, each expectation claimable at most once).
 
 ## Presets JSON format
 

@@ -1,0 +1,9 @@
+{
+  "expectedEvents": [
+    {
+      "gameId": "sekiro",
+      "eventId": "combat.perfect_deflect",
+      "timestampUs": 1040
+    }
+  ]
+}

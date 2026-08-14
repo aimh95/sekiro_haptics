@@ -93,8 +93,44 @@ private:
 /// error text) into `outMalformedLines` and skipped -- not fatal, so one
 /// bad trace line doesn't lose the rest of the replay. Returns the count of
 /// signals successfully read (Success results only).
+///
+/// This is this project's **legacy compatibility path**: it never checks
+/// for a metadata sidecar at all (see trace::LegacyTracePolicy), so it
+/// accepts an unversioned trace exactly as it always has. A caller opts
+/// into that tolerance simply by calling this function directly instead of
+/// RunReplayLoopStrict below -- there is no auto-detection involved.
 std::size_t RunReplayLoop(IGameSignalSource& source, ReplayPipeline& pipeline,
                            std::vector<PipelineStepOutcome>& outOutcomes,
                            std::vector<std::string>& outMalformedLines);
+
+/// Validates `tracePath` in full (trace::ValidateTraceFile, always with
+/// `LegacyTracePolicy::RejectLegacy` -- never configurable, see below)
+/// *before* touching `pipeline` at all, then -- only if validation passed
+/// -- opens it as a ReplaySignalSource and behaves exactly like
+/// RunReplayLoop.
+///
+/// Because this always uses RejectLegacy, a trace with **no metadata
+/// sidecar at all** fails validation here (a "MissingMetadata: ..." entry
+/// in `outValidationErrors`) exactly like any other invalid trace --
+/// `pipeline` is never touched and `outOutcomes` stays empty. A caller
+/// that genuinely needs to accept an unversioned trace must use
+/// RunReplayLoop above (or trace::ValidateTraceFile directly with
+/// `LegacyTracePolicy::AllowLegacy`) -- that is the explicit opt-in this
+/// function deliberately does not offer, since **any future integration
+/// with real hardware must go through this strict/reject-legacy path**,
+/// not RunReplayLoop's tolerant one.
+///
+/// Unlike RunReplayLoop's per-line tolerance (a single malformed line is
+/// skipped and the rest of the trace still replays), this is a whole-trace
+/// gate: any problem anywhere in the trace or its metadata sidecar means
+/// `pipeline` (and therefore its scheduler/backend) is never called at
+/// all. `outOutcomes`/`outMalformedLines` are left untouched on a failed
+/// validation; `outValidationErrors` receives ValidateTraceFile's error
+/// list. Returns whether validation passed (and therefore whether the
+/// trace was actually replayed).
+bool RunReplayLoopStrict(const std::string& tracePath, ReplayPipeline& pipeline,
+                          std::vector<PipelineStepOutcome>& outOutcomes,
+                          std::vector<std::string>& outMalformedLines,
+                          std::vector<std::string>& outValidationErrors);
 
 } // namespace sekiro_haptics

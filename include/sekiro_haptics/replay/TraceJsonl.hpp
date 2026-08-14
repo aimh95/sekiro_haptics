@@ -22,6 +22,7 @@ enum class TraceReadResult {
     MissingTimestamp,
     MissingSignal,
     OutOfOrderTimestamp,
+    InvalidSignalValidity,
     IoError,
 };
 
@@ -41,6 +42,16 @@ const char* ToString(TraceReadResult result);
 /// Ordering policy: `timestampUs` must be non-decreasing from one non-blank
 /// line to the next (ties are allowed). A decrease is reported as
 /// OutOfOrderTimestamp rather than silently reordering the trace.
+///
+/// Signal validity: an optional `validity` field distinguishes a real
+/// reading from a signal source that couldn't observe this value right
+/// now -- important so "couldn't read this" is never confused with "read
+/// this as 0/false". If present, it must be exactly one of `"valid"`
+/// (the default when the field is absent), `"unavailable"`, or
+/// `"disabled"`; any other value is InvalidSignalValidity. The value ends
+/// up in `GameSignal::extra["validity"]` verbatim (only when the field was
+/// present at all) -- consumers that care (see ManualLabelEventDetector)
+/// check for it there rather than this struct growing a dedicated field.
 class TraceReader {
 public:
     explicit TraceReader(const std::string& path);

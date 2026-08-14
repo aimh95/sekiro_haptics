@@ -30,6 +30,7 @@ HapticBackendResult MockHapticBackend::Reset() {
     std::lock_guard<std::mutex> lock(mutex_);
     ++resetCount_;
     log_ << "[MockHapticBackend] Reset\n";
+    cv_.notify_all();
     return HapticBackendResult::Success;
 }
 
@@ -51,6 +52,11 @@ int MockHapticBackend::ResetCount() const {
 bool MockHapticBackend::WaitForEffectCount(std::size_t count, std::chrono::milliseconds timeout) const {
     std::unique_lock<std::mutex> lock(mutex_);
     return cv_.wait_for(lock, timeout, [&] { return history_.size() >= count; });
+}
+
+bool MockHapticBackend::WaitForResetCount(int count, std::chrono::milliseconds timeout) const {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return cv_.wait_for(lock, timeout, [&] { return resetCount_ >= count; });
 }
 
 } // namespace sekiro_haptics
