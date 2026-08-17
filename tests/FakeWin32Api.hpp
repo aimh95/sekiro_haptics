@@ -50,6 +50,18 @@ public:
     /// The next ReadProcessMemory() call reports failure (false).
     void ForceNextReadToFail() { forceReadFailureNext_ = true; }
 
+    /// Sets the ordered sequence of regions QueryNextMemoryRegion() walks
+    /// through -- must be sorted by ascending baseAddress and
+    /// non-overlapping (the fake trusts the test to set up a sane map, the
+    /// same way a real address space is inherently non-overlapping).
+    void SetMemoryRegions(std::vector<RawMemoryRegionInfo> regions) { memoryRegions_ = std::move(regions); }
+
+    /// The Nth QueryNextMemoryRegion() call (0-based) reports QueryFailed
+    /// instead of walking the configured region list.
+    void ForceMemoryRegionQueryFailureAtCall(int callIndex) { forceMemoryQueryFailureAtCall_ = callIndex; }
+
+    int MemoryRegionQueryCalls() const { return memoryRegionQueryCalls_; }
+
     // --- observers ---
 
     int OpenAttempts() const { return openAttempts_; }
@@ -172,6 +184,20 @@ public:
     int ImagePathQueries() const { return imagePathQueries_; }
     int ModuleEnumerationCalls() const { return moduleEnumerationCalls_; }
 
+    MemoryRegionQueryOutcome QueryNextMemoryRegion(void*, std::uintptr_t address, RawMemoryRegionInfo& outRegion) override {
+        int callIndex = memoryRegionQueryCalls_++;
+        if (forceMemoryQueryFailureAtCall_.has_value() && *forceMemoryQueryFailureAtCall_ == callIndex) {
+            return MemoryRegionQueryOutcome::QueryFailed;
+        }
+        for (const RawMemoryRegionInfo& region : memoryRegions_) {
+            if (region.baseAddress + region.regionSize > address) {
+                outRegion = region;
+                return MemoryRegionQueryOutcome::Found;
+            }
+        }
+        return MemoryRegionQueryOutcome::EndOfSpace;
+    }
+
 private:
     struct FakeHandle {
         std::uint32_t pid = 0;
@@ -197,6 +223,10 @@ private:
     int imagePathQueries_ = 0;
     int moduleEnumerationCalls_ = 0;
     std::vector<std::unique_ptr<FakeHandle>> handles_;
+
+    std::vector<RawMemoryRegionInfo> memoryRegions_;
+    std::optional<int> forceMemoryQueryFailureAtCall_;
+    int memoryRegionQueryCalls_ = 0;
 };
 
 } // namespace sekiro_haptics::process

@@ -119,6 +119,21 @@ public:
 
     std::uint32_t Pid() const { return childPid_; }
 
+    /// Sends one command line (e.g. "INCREMENT") and blocks until the
+    /// helper's "OK" acknowledgement line comes back -- real pipe
+    /// synchronization for "the command has been applied," no sleep on
+    /// either side. Returns false if the write failed or the expected "OK"
+    /// line wasn't read back.
+    bool SendCommandAndWaitForAck(const std::string& command) {
+        std::string message = command + "\n";
+        DWORD written = 0;
+        if (!WriteFile(stdinWrite_, message.data(), static_cast<DWORD>(message.size()), &written, nullptr)) {
+            return false;
+        }
+        std::string ack;
+        return ReadLine(ack) && ack == "OK";
+    }
+
 private:
     HANDLE processHandle_ = nullptr;
     HANDLE threadHandle_ = nullptr;

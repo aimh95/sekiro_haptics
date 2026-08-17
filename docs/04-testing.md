@@ -1,6 +1,6 @@
 # Testing conventions
 
-*Doc 4 of 5 — previous: [03-trace-format.md](03-trace-format.md), next: [05-process-access.md](05-process-access.md).*
+*Doc 4 of 6 — previous: [03-trace-format.md](03-trace-format.md), next: [05-process-access.md](05-process-access.md).*
 
 This document covers how tests in this repository are named, organized,
 and leveled, and what to add when a new game event is introduced. It
@@ -106,7 +106,8 @@ or a comment referencing this document):
 |---|---|
 | All of `test_trace_parser.cpp`, `test_replay_signal_source.cpp`, `test_event_detector.cpp`, `test_profile_resolution.cpp`, `test_pipeline.cpp`, `test_scheduler.cpp`, `test_haptic_effect.cpp`, `test_mock_backend.cpp`, `test_dualsense_usb_report.cpp`, `test_trace_metadata.cpp`, `test_trace_validator.cpp`, `test_expected_event_repository.cpp`, `test_replay_comparator.cpp`, `test_replay_determinism.cpp`, `test_scheduler_duration.cpp`, `test_dualsense_legacy_backend.cpp`, `test_replay_hardware_backend.cpp` (fake `IDualSenseTransport`) | `apps/dualsense_rumble_test` (manual rumble smoke test) |
 | `test_dualsense_transport.cpp`'s error-path checks (invalid path, not-open writes, construct/destruct safety -- see `docs/01-architecture.md`) | `apps/replay_hardware` (manual hardware replay smoke test -- see `docs/03-trace-format.md`) |
-| `test_win32_process_reader.cpp` (fake `IWin32Api`), `test_win32_process_reader_integration.cpp` (real, but self-contained, non-game helper process), `test_executable_identity.cpp` (plain temp files, no process at all), `test_aob_pattern.cpp`, `test_aob_scanner.cpp`, `test_rip_relative.cpp`, `test_aob_positive_negative_fixtures.cpp` (fake `IProcessReader`), and `test_aob_scanner_integration.cpp` (real, self-contained helper process) -- see `docs/05-process-access.md` | Any future `HW-###` game-acceptance case (real Sekiro + real DualSense + a human) |
+| `test_win32_process_reader.cpp` (fake `IWin32Api`), `test_win32_process_reader_integration.cpp` (real, but self-contained, non-game helper process), `test_executable_identity.cpp` (plain temp files, no process at all), `test_aob_pattern.cpp`, `test_aob_scanner.cpp`, `test_rip_relative.cpp`, `test_aob_positive_negative_fixtures.cpp` (fake `IProcessReader`), `test_aob_scanner_integration.cpp` (real, self-contained helper process), `test_signature_profile_repository.cpp`, `test_address_resolver.cpp` (fake `IProcessInspector`/`IProcessReader`), and `test_address_resolver_integration.cpp` (real, self-contained helper process) -- see `docs/05-process-access.md` | Any future `HW-###` game-acceptance case (real Sekiro + real DualSense + a human) |
+| `test_process_memory_map.cpp` (fake `IWin32Api`), `test_candidate_scanner.cpp` (fake `IProcessReader`/`IProcessInspector`/`IProcessMemoryMap`), and `test_signal_probe_integration.cpp` (real, self-contained helper process) -- see `docs/06-signal-discovery-probe.md` | `apps/sekiro_signal_probe` attached to a real, running Sekiro (manual live discovery session, see `docs/06-signal-discovery-probe.md`) |
 | `apps/replay_cli` against any trace fixture | |
 
 ## Future acceptance-test template

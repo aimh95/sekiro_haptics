@@ -30,20 +30,66 @@ struct ModuleEnumEntry {
     std::size_t imageSize = 0;
 };
 
+/// Coarse OS-reported memory-region kind, from VirtualQueryEx's Type
+/// field -- MEM_IMAGE / MEM_MAPPED / MEM_PRIVATE. Unknown covers a free/
+/// unmapped region (Type == 0), which never ends up classified as
+/// readable regardless.
+enum class RawMemoryRegionKind {
+    Image,
+    Mapped,
+    Private,
+    Unknown,
+};
+
+/// Unclassified facts about one queried memory region -- exactly what
+/// VirtualQueryEx reports, translated into simple booleans/an enum rather
+/// than raw Win32 PAGE_*/MEM_* bit flags, but with NO "is this safe to
+/// read" policy decision applied yet. That policy (MEM_COMMIT + a
+/// read-granting protection + not PAGE_GUARD + not PAGE_NOACCESS + a
+/// non-zero, non-overflowing size) is applied by
+/// Win32ProcessReader::EnumerateReadableRegions() -- see
+/// IProcessMemoryMap.hpp -- so a Fake can drive every combination of
+/// these flags deterministically without needing real OS memory to
+/// provoke them.
+struct RawMemoryRegionInfo {
+    std::uintptr_t baseAddress = 0;
+    std::size_t regionSize = 0;
+    bool committed = false;
+    bool guarded = false;
+    bool noAccessProtection = false;
+    bool readableProtection = false;
+    RawMemoryRegionKind kind = RawMemoryRegionKind::Unknown;
+};
+
+/// Outcome of a single QueryNextMemoryRegion() call.
+enum class MemoryRegionQueryOutcome {
+    /// `outRegion` was populated with the region at-or-after the queried address.
+    Found,
+    /// No further region exists -- normal loop termination when walking
+    /// the whole address space, not a failure.
+    EndOfSpace,
+    /// The query call itself failed unexpectedly (e.g. an invalid
+    /// handle) -- distinct from EndOfSpace, and reported as a genuine
+    /// typed failure by callers.
+    QueryFailed,
+};
+
 /// Seam between Win32ProcessReader and the actual Win32 API calls it
 /// needs, so a test can substitute a fake and (a) assert exactly what
 /// access mask/PID Win32ProcessReader requests, without a real process to
 /// attach to, and (b) simulate OS-level failure modes (OpenProcess
-/// failing, a short/failed ReadProcessMemory, a process that has exited)
-/// that are impractical or impossible to provoke reliably against a real
-/// OS. See src/process/Win32Api.cpp for the real implementation and
-/// src/process/Win32ProcessReader.cpp for how it's used.
+/// failing, a short/failed ReadProcessMemory, a process that has exited,
+/// a memory-region query failing) that are impractical or impossible to
+/// provoke reliably against a real OS. See src/process/Win32Api.cpp for
+/// the real implementation and src/process/Win32ProcessReader.cpp for how
+/// it's used.
 ///
-/// This interface exists purely as a test seam for *this* read-only
-/// module -- it is intentionally shaped around exactly the four
-/// operations Win32ProcessReader needs (enumerate, open, read, check
-/// liveness, close) and nothing else. It has no write-memory method, to
-/// match IProcessReader's own read-only boundary.
+/// This interface exists purely as a test seam for the read-only process
+/// modules built on top of it -- it is intentionally shaped around
+/// exactly the operations those modules need (enumerate, open, read,
+/// check liveness, close, query memory regions) and nothing else. It has
+/// no write-memory method, to match IProcessReader's own read-only
+/// boundary.
 class IWin32Api {
 public:
     virtual ~IWin32Api() = default;
@@ -89,6 +135,14 @@ public:
     /// (but successfully obtained) list is reported as true with zero
     /// entries, not a failure.
     virtual bool EnumerateModules(std::uint32_t pid, std::vector<ModuleEnumEntry>& outModules) = 0;
+
+    /// Queries the memory region starting at-or-after `address` in the
+    /// process owning `handle` -- mirrors VirtualQueryEx's own semantics
+    /// (the region containing `address`, or the next one if `address`
+    /// itself isn't mapped). Read-only: never changes the target
+    /// process's memory protection or contents.
+    virtual MemoryRegionQueryOutcome QueryNextMemoryRegion(void* handle, std::uintptr_t address,
+                                                            RawMemoryRegionInfo& outRegion) = 0;
 };
 
 } // namespace sekiro_haptics::process

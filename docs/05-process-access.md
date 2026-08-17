@@ -1,6 +1,6 @@
 # Read-only process access, executable identity, and AOB scanning (`SEK-READ-001A`–`001C`)
 
-*Doc 5 of 5 — previous: [04-testing.md](04-testing.md).*
+*Doc 5 of 6 — previous: [04-testing.md](04-testing.md), next: [06-signal-discovery-probe.md](06-signal-discovery-probe.md).*
 
 This document covers three closely related, deliberately separate
 responsibilities living under `include/sekiro_haptics/process/`:
@@ -436,34 +436,68 @@ is expected to gate pattern-based address resolution behind a confirmed
 build identity match first; scanning is not, on its own, a safety net
 against running against the wrong build.
 
+## Signature profiles and single-step address resolution (`SEK-READ-001D`)
+
+Built on top of everything above: `SignatureProfile`/`SignatureProfileRepository`
+(`include/sekiro_haptics/process/SignatureProfile.hpp`,
+`SignatureProfileRepository.hpp`) and `AddressResolver`
+(`AddressResolver.hpp`).
+
+A `SignatureProfile` ties one exact build (`fileSizeBytes` + `sha256`,
+compared exactly against `ExecutableIdentity` -- never by path, filename,
+module base, image size, or a partial/nearest match) to a list of named
+`AddressSpec`s. Each `AddressSpec` is entirely **module-relative**: a scan
+offset/size, an AOB pattern (parsed via the same `ParseAobPattern()` from
+above), a resolution kind (`match_address` with a signed offset, or
+`rip_relative_32` reusing `RipRelative.hpp` unchanged), and an allowed
+target range -- never a stored runtime absolute address.
+`SignatureProfileRepository::LoadFromFile()` is strict and whole-file
+fail-closed: any single invalid profile rejects the entire file, and a
+failed load never partially overwrites profiles from an earlier successful
+load. `SignatureProfileRepository::SelectFor()` only ever returns a
+profile whose build identity matches exactly; zero matches is
+`UnsupportedBuild`, more than one is `AmbiguousProfile` -- never a
+fallback to "closest."
+
+`AddressResolver::ResolveAddressesForIdentity()` orchestrates: select a
+profile (or fail the whole attempt closed, without touching the process at
+all, if no profile matches) -> for each `AddressSpec` independently, exact
+module lookup -> module-relative scan/target range validated against the
+module's actual runtime bounds -> unique AOB scan (`ScanProcessRange()`,
+unchanged) -> resolution-kind-specific calculation -> final target-range
+check -> `Resolved` or `Disabled` (with a specific reason). One address's
+failure never affects another's, and this layer still never dereferences a
+pointer -- it resolves exactly one address per `AddressSpec` and stops.
+
 ## What this stage does not support yet
 
-- No `SignatureProfile` or per-build offset/profile repository, and no
-  "supported Sekiro version" policy -- `ExecutableIdentity` gives a stable
-  way to *recognize* a build, and `AobScanner`/`RipRelative` give a way to
-  *locate* a byte pattern and resolve an address from it, but nothing here
-  yet decides which pattern to look for on which build, or ties the two
-  together automatically.
-- No `AddressResolver` and no pointer-chain dereferencing -- `RipRelative`
-  resolves exactly one displacement per call; chasing a multi-level
-  pointer chain from a resolved address is a separate, not-yet-built layer.
-- No real Sekiro (or any other game's) memory addresses, offsets, or
-  signature bytes anywhere in this repository.
+- No pointer-chain dereferencing -- `RipRelative`/`AddressResolver` each
+  resolve exactly one address per spec; chasing a multi-level pointer
+  chain from a resolved address remains a separate, not-yet-built layer
+  (paused for `SEK-PROBE-001A`, see below; still open for a future
+  `SEK-READ-001E`).
+- No real Sekiro (or any other game's) memory addresses, offsets, profile
+  entries, or signature bytes anywhere in this repository.
+- No automatic promotion of anything discovered by the signal-discovery
+  probe (`06-signal-discovery-probe.md`) into a `SignatureProfile` -- a
+  live capture's addresses are only ever valid for the run that produced
+  them (ASLR), and only a human deciding a candidate is real and stable
+  moves it into a profile, by hand, later.
 - No `GameSignal` production. This module produces raw bytes, identity
   facts, and resolved addresses only; turning them into a `GameSignal` (or
   deciding a signal is `unavailable` because a read/scan failed) is
-  `LiveSekiroSignalSource`'s job, which does not exist yet and is out of
-  scope through this ticket.
+  `LiveSekiroSignalSource`'s job, which does not exist yet.
 - No screen capture, function hooks, or DLL injection -- none of those
   belong in a read-only process-memory module regardless.
 
-## Next step: `SEK-READ-001D`
+## Next: signal discovery (`SEK-PROBE-001A`) and, later, pointer chains
 
-The next ticket adds a profile-backed address resolver on top of this
-foundation: a version-keyed `SignatureProfile` (which pattern + RIP-relative
-spec belongs to which recognized build, gated by `ExecutableIdentity`) and
-a `SignatureProfileRepository`, plus pointer-chain dereferencing built on
-top of `AobScanner`/`RipRelative`'s already-validated single-step
-resolution. This trio of tickets intentionally stops at "here is how to
-find one address inside a build I've confirmed I recognize," not "here is
-where a specific game value lives."
+`SEK-READ-001E` (a production pointer-chain resolver) is paused. Before
+building that on invented offsets, `SEK-PROBE-001A` adds a **developer-only**
+live discovery probe -- attach read-only to a real `sekiro.exe`, enumerate
+its readable memory, and search for raw value *candidates* that change
+alongside real user actions, without ever hardcoding or guessing an
+address. See [06-signal-discovery-probe.md](06-signal-discovery-probe.md)
+for that tool -- it is deliberately a separate document and a separate
+safety boundary from everything above it, since it is not part of the
+production haptics runtime.

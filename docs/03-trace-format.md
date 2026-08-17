@@ -1,6 +1,6 @@
 # Trace and config JSON formats
 
-*Doc 3 of 5 — previous: [02-dualsense-output.md](02-dualsense-output.md), next: [04-testing.md](04-testing.md).*
+*Doc 3 of 6 — previous: [02-dualsense-output.md](02-dualsense-output.md), next: [04-testing.md](04-testing.md).*
 
 This document is the schema reference for the three JSON-based formats the
 replay pipeline uses: the JSONL signal trace, the presets file, and the

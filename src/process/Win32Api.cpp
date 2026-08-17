@@ -83,6 +83,56 @@ public:
         return true;
     }
 
+    MemoryRegionQueryOutcome QueryNextMemoryRegion(void* handle, std::uintptr_t address,
+                                                    RawMemoryRegionInfo& outRegion) override {
+        MEMORY_BASIC_INFORMATION mbi{};
+        SIZE_T result =
+            VirtualQueryEx(static_cast<HANDLE>(handle), reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi));
+        if (result == 0) {
+            // ERROR_INVALID_PARAMETER is VirtualQueryEx's normal signal
+            // that `address` is past the end of the queryable address
+            // space -- the expected way a full-address-space walk ends,
+            // not a failure.
+            DWORD error = GetLastError();
+            return (error == ERROR_INVALID_PARAMETER) ? MemoryRegionQueryOutcome::EndOfSpace
+                                                        : MemoryRegionQueryOutcome::QueryFailed;
+        }
+        if (result < sizeof(mbi)) {
+            // A malformed/truncated result -- never trusted.
+            return MemoryRegionQueryOutcome::QueryFailed;
+        }
+
+        RawMemoryRegionInfo info;
+        info.baseAddress = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress);
+        info.regionSize = static_cast<std::size_t>(mbi.RegionSize);
+        info.committed = (mbi.State == MEM_COMMIT);
+        info.guarded = (mbi.Protect & PAGE_GUARD) != 0;
+
+        DWORD baseProtect = mbi.Protect & 0xFF; // strip PAGE_GUARD/PAGE_NOCACHE/PAGE_WRITECOMBINE modifier bits
+        info.noAccessProtection = (baseProtect == PAGE_NOACCESS);
+        info.readableProtection = (baseProtect == PAGE_READONLY || baseProtect == PAGE_READWRITE ||
+                                    baseProtect == PAGE_WRITECOPY || baseProtect == PAGE_EXECUTE_READ ||
+                                    baseProtect == PAGE_EXECUTE_READWRITE || baseProtect == PAGE_EXECUTE_WRITECOPY);
+
+        switch (mbi.Type) {
+            case MEM_IMAGE:
+                info.kind = RawMemoryRegionKind::Image;
+                break;
+            case MEM_MAPPED:
+                info.kind = RawMemoryRegionKind::Mapped;
+                break;
+            case MEM_PRIVATE:
+                info.kind = RawMemoryRegionKind::Private;
+                break;
+            default:
+                info.kind = RawMemoryRegionKind::Unknown;
+                break;
+        }
+
+        outRegion = info;
+        return MemoryRegionQueryOutcome::Found;
+    }
+
     bool EnumerateModules(std::uint32_t pid, std::vector<ModuleEnumEntry>& outModules) override {
         HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
         if (snapshot == INVALID_HANDLE_VALUE) {

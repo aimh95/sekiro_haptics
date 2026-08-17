@@ -1,0 +1,2 @@
+add_executable(sekiro_haptics_signal_probe main.cpp)
+target_link_libraries(sekiro_haptics_signal_probe PRIVATE sekiro_haptics)

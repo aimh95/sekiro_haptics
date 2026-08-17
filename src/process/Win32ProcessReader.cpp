@@ -344,4 +344,100 @@ ProcessInspectionResult Win32ProcessReader::FindModuleExact(const std::string& m
     return ToModuleInfo(*matched, outModule);
 }
 
+namespace {
+// A generous but finite safety bound against a runaway enumeration (a
+// misbehaving seam, or -- in principle -- a process with a pathologically
+// fragmented address space) -- real processes have nowhere near this many
+// regions.
+constexpr std::size_t kMaxMemoryRegionsPerEnumeration = 200000;
+} // namespace
+
+MemoryMapResult Win32ProcessReader::EnumerateReadableRegions(std::vector<ProcessMemoryRegion>& outRegions) const {
+    if (handle_ == nullptr) {
+        return MemoryMapResult::NotAttached;
+    }
+    if (!api_.IsProcessAlive(handle_)) {
+        return MemoryMapResult::ProcessExited;
+    }
+
+    std::vector<ProcessMemoryRegion> collected;
+    std::uintptr_t address = 0;
+    std::size_t regionsWalked = 0;
+
+    while (true) {
+        RawMemoryRegionInfo raw;
+        MemoryRegionQueryOutcome outcome = api_.QueryNextMemoryRegion(handle_, address, raw);
+        if (outcome == MemoryRegionQueryOutcome::EndOfSpace) {
+            break;
+        }
+        if (outcome == MemoryRegionQueryOutcome::QueryFailed) {
+            return MemoryMapResult::EnumerationFailed;
+        }
+
+        ++regionsWalked;
+        if (regionsWalked > kMaxMemoryRegionsPerEnumeration) {
+            return MemoryMapResult::RegionCountLimitExceeded;
+        }
+
+        std::uintptr_t regionEnd = raw.baseAddress + raw.regionSize;
+        if (regionEnd < raw.baseAddress) {
+            // Enumeration cannot safely continue past an overflowing
+            // region -- there is no valid "next address" to resume from.
+            return MemoryMapResult::AddressOverflow;
+        }
+
+        bool readable = raw.committed && raw.readableProtection && !raw.guarded && !raw.noAccessProtection &&
+                         raw.regionSize != 0;
+        if (readable) {
+            ProcessMemoryRegion region;
+            region.baseAddress = raw.baseAddress;
+            region.sizeBytes = raw.regionSize;
+            region.committed = true;
+            region.readable = true;
+            switch (raw.kind) {
+                case RawMemoryRegionKind::Image:
+                    region.kind = MemoryRegionKind::Image;
+                    break;
+                case RawMemoryRegionKind::Mapped:
+                    region.kind = MemoryRegionKind::Mapped;
+                    break;
+                case RawMemoryRegionKind::Private:
+                case RawMemoryRegionKind::Unknown:
+                default:
+                    region.kind = MemoryRegionKind::Private;
+                    break;
+            }
+            collected.push_back(region);
+        }
+
+        if (raw.regionSize == 0 || regionEnd <= address) {
+            // Can't safely advance further -- treat as the end of what
+            // can be enumerated.
+            break;
+        }
+        address = regionEnd;
+    }
+
+    outRegions = std::move(collected);
+    return MemoryMapResult::Success;
+}
+
+const char* ToString(MemoryMapResult result) {
+    switch (result) {
+        case MemoryMapResult::Success:
+            return "Success";
+        case MemoryMapResult::NotAttached:
+            return "NotAttached";
+        case MemoryMapResult::ProcessExited:
+            return "ProcessExited";
+        case MemoryMapResult::EnumerationFailed:
+            return "EnumerationFailed";
+        case MemoryMapResult::AddressOverflow:
+            return "AddressOverflow";
+        case MemoryMapResult::RegionCountLimitExceeded:
+            return "RegionCountLimitExceeded";
+    }
+    return "Unknown";
+}
+
 } // namespace sekiro_haptics::process

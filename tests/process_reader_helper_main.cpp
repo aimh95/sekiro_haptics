@@ -1,10 +1,12 @@
 // Test-only helper process for Win32ProcessReader's real Win32 integration
-// test (tests/test_win32_process_reader_integration.cpp) and
+// test (tests/test_win32_process_reader_integration.cpp),
 // AobScanner/RipRelative's real Win32 integration test
-// (tests/test_aob_scanner_integration.cpp). Not part of the production
+// (tests/test_aob_scanner_integration.cpp), and the signal-discovery
+// probe's real Win32 integration test
+// (tests/test_signal_probe_integration.cpp). Not part of the production
 // project -- this exists purely to be a real, separate, harmless process
-// with known byte patterns at known addresses for those integration tests
-// to attach to and read.
+// with known byte patterns/values at known addresses for those
+// integration tests to attach to and read.
 //
 // Protocol (line-based over stdout/stdin, no sleep on either side):
 //   1. On startup, prints exactly one line to stdout:
@@ -12,10 +14,23 @@
 //          aobAddr=<decimal address> aobLen=<byte count>
 //          matchOffset=<byte offset of the AOB pattern within aobAddr>
 //          target=<decimal address of the synthetic rel32's target>
+//          watchSentinelAddr=<decimal address> watchIncrementAddr=<decimal address>
+//          watchDecrementAddr=<decimal address> watchToggleAddr=<decimal address>
+//          watchNoiseAddr=<decimal address>
 //      and flushes -- the parent blocking on reading this line is the
 //      synchronization for "the helper is ready."
-//   2. Blocks reading a line from stdin. Any line (or EOF) is treated as
-//      "exit now."
+//   2. Loops reading commands from stdin, one per line, each applied
+//      synchronously before printing exactly one "OK" acknowledgement line
+//      (the parent blocking on reading that line is the synchronization
+//      for "the command has been applied" -- no sleep on either side):
+//        INCREMENT  -- increases the watch-increment value
+//        DECREMENT  -- decreases the watch-decrement value
+//        TOGGLE     -- flips the watch-toggle value between 0 and 1
+//        EXIT       -- exits immediately (no "OK" printed)
+//      Every command (including EXIT) also advances the watch-noise value
+//      first, so a real, independent, unrelated-to-the-test-target value
+//      keeps changing throughout -- something a correct filter narrows
+//      away rather than mistaking for the one being tracked.
 
 #include "sekiro_haptics/process/AobScanner.hpp"
 
@@ -63,6 +78,16 @@ std::size_t g_patternOffset = 0;
 
 alignas(8) unsigned char g_ripRelativeTarget[8] = {'T', 'A', 'R', 'G', 'E', 'T', '!', '!'};
 
+// Independent watch-target values for the signal-discovery probe's
+// candidate-scan integration test -- each one exercises exactly one
+// CandidateFilterKind, plus one deliberately unrelated value that keeps
+// changing on its own so a correct filter has something real to exclude.
+alignas(4) volatile std::uint32_t g_watchSentinel = 0xCAFEF00D; // never changes
+alignas(4) volatile std::uint32_t g_watchIncrement = 1000;      // INCREMENT raises this
+alignas(4) volatile std::uint32_t g_watchDecrement = 1000;      // DECREMENT lowers this
+alignas(4) volatile std::uint32_t g_watchToggle = 0;            // TOGGLE flips 0 <-> 1
+alignas(4) volatile std::uint32_t g_watchNoise = 0;             // advances on every command
+
 void InitAobBuffer() {
     // Deterministic filler that can never equal any of the pattern's exact
     // bytes (0xAB, 0xCD, 0x11, 0x22, 0xEF, 0x99) -- guarantees the pattern
@@ -100,10 +125,33 @@ int main() {
               << reinterpret_cast<std::uintptr_t>(static_cast<void*>(g_knownPattern)) << " len=" << sizeof(g_knownPattern)
               << " aobAddr=" << reinterpret_cast<std::uintptr_t>(static_cast<void*>(g_aobBuffer))
               << " aobLen=" << kAobBufferSize << " matchOffset=" << g_patternOffset
-              << " target=" << reinterpret_cast<std::uintptr_t>(static_cast<void*>(g_ripRelativeTarget)) << std::endl;
+              << " target=" << reinterpret_cast<std::uintptr_t>(static_cast<void*>(g_ripRelativeTarget))
+              << " watchSentinelAddr=" << reinterpret_cast<std::uintptr_t>(const_cast<std::uint32_t*>(&g_watchSentinel))
+              << " watchIncrementAddr="
+              << reinterpret_cast<std::uintptr_t>(const_cast<std::uint32_t*>(&g_watchIncrement))
+              << " watchDecrementAddr="
+              << reinterpret_cast<std::uintptr_t>(const_cast<std::uint32_t*>(&g_watchDecrement))
+              << " watchToggleAddr=" << reinterpret_cast<std::uintptr_t>(const_cast<std::uint32_t*>(&g_watchToggle))
+              << " watchNoiseAddr=" << reinterpret_cast<std::uintptr_t>(const_cast<std::uint32_t*>(&g_watchNoise))
+              << std::endl;
     std::cout.flush();
 
     std::string line;
-    std::getline(std::cin, line); // blocks until the parent sends anything (or closes the pipe)
+    while (std::getline(std::cin, line)) {
+        if (line == "EXIT") {
+            break;
+        }
+        if (line == "INCREMENT") {
+            g_watchIncrement += 10;
+        } else if (line == "DECREMENT") {
+            g_watchDecrement -= 10;
+        } else if (line == "TOGGLE") {
+            g_watchToggle = (g_watchToggle == 0) ? 1u : 0u;
+        }
+        g_watchNoise = g_watchNoise + 1; // an independent value that changes regardless of which command ran
+
+        std::cout << "OK" << std::endl;
+        std::cout.flush();
+    }
     return 0;
 }

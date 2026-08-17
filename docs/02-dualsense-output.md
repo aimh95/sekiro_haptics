@@ -1,6 +1,6 @@
 # DualSense 진동 출력 — 동작 원리
 
-*문서 2/5 — 이전: [01-architecture.md](01-architecture.md), 다음: [03-trace-format.md](03-trace-format.md).*
+*문서 2/6 — 이전: [01-architecture.md](01-architecture.md), 다음: [03-trace-format.md](03-trace-format.md).*
 
 이 문서는 SekiroHaptics의 DualSense 진동 출력이 **왜 그렇게 동작하는지**를 먼저 설명하고,
 그 설명의 근거로만 파일명·함수명·라인 번호를 붙인다. 코드 나열이 아니라 "지금 이 시스템이

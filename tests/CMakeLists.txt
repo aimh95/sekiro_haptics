@@ -28,6 +28,9 @@ add_executable(sekiro_haptics_tests
     test_address_resolver.cpp
     test_address_resolver_integration.cpp
     test_signature_profile_repository.cpp
+    test_process_memory_map.cpp
+    test_candidate_scanner.cpp
+    test_signal_probe_integration.cpp
 )
 target_include_directories(sekiro_haptics_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics)

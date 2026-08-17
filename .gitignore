@@ -1,1 +1,8 @@
 build/
+build-wsl/
+
+# Local live-discovery captures (SEK-PROBE-001A, apps/sekiro_signal_probe):
+# session metadata and watch.jsonl from real game attaches. These may
+# contain a real build's SHA-256/file size and runtime addresses valid
+# only for that one run -- never committed, never used as source data.
+captures/local/

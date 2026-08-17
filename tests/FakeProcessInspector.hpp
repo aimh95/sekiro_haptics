@@ -1,9 +1,10 @@
 #pragma once
 
-// Test-only IProcessInspector double for AddressResolver tests. Lives
-// under tests/, never included by production code. Only FindModuleExact()
-// is meaningfully exercised by AddressResolver -- GetImagePath()/
-// GetMainModule() are stubbed since AddressResolver never calls them.
+// Test-only IProcessInspector double for AddressResolver and
+// CandidateScanner tests. Lives under tests/, never included by
+// production code. GetImagePath() is stubbed (nothing in this repo's
+// tests exercises it through this fake yet); FindModuleExact() and
+// GetMainModule() are both independently configurable.
 
 #include "sekiro_haptics/process/IProcessInspector.hpp"
 
@@ -24,10 +25,27 @@ public:
     /// failures unrelated to any specific module name.
     void ForceFindModuleResult(ProcessInspectionResult result) { forcedResult_ = result; }
 
+    /// Sets what GetMainModule() reports on success. Unset (the default)
+    /// means GetMainModule() returns Success with a default-constructed
+    /// (zeroed) ModuleInfo -- unchanged from this fake's original
+    /// behavior, so existing callers that never configure this are
+    /// unaffected.
+    void SetMainModule(ModuleInfo info) { mainModule_ = std::move(info); }
+
+    /// Forces GetMainModule() to return this result instead.
+    void ForceGetMainModuleResult(ProcessInspectionResult result) { forcedMainModuleResult_ = result; }
+
     int FindModuleCalls() const { return findModuleCalls_; }
 
     ProcessInspectionResult GetImagePath(std::filesystem::path&) override { return ProcessInspectionResult::Success; }
-    ProcessInspectionResult GetMainModule(ModuleInfo&) override { return ProcessInspectionResult::Success; }
+
+    ProcessInspectionResult GetMainModule(ModuleInfo& outModule) override {
+        if (forcedMainModuleResult_.has_value()) {
+            return *forcedMainModuleResult_;
+        }
+        outModule = mainModule_;
+        return ProcessInspectionResult::Success;
+    }
 
     ProcessInspectionResult FindModuleExact(const std::string& moduleName, ModuleInfo& outModule) override {
         ++findModuleCalls_;
@@ -70,6 +88,8 @@ private:
     std::vector<std::pair<std::string, ModuleInfo>> modules_;
     std::optional<ProcessInspectionResult> forcedResult_;
     int findModuleCalls_ = 0;
+    ModuleInfo mainModule_;
+    std::optional<ProcessInspectionResult> forcedMainModuleResult_;
 };
 
 } // namespace sekiro_haptics::process

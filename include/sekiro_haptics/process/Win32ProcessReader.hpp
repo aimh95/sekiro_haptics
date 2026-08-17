@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sekiro_haptics/process/IProcessInspector.hpp"
+#include "sekiro_haptics/process/IProcessMemoryMap.hpp"
 #include "sekiro_haptics/process/IProcessReader.hpp"
 #include "sekiro_haptics/process/IWin32Api.hpp"
 
@@ -38,13 +39,14 @@ namespace sekiro_haptics::process {
 /// Not copyable (a copy would double-close the handle on destruction);
 /// move is not supported either -- there is always exactly one owner.
 ///
-/// Also implements IProcessInspector (path/module/identity queries) on
-/// the same attached process, through the same handle -- see
-/// docs/05-process-access.md for why this is one class implementing two
-/// focused interfaces rather than either bloating IProcessReader or
-/// standing up a second class that would need its own (redundant) OS
-/// handle to the same process.
-class Win32ProcessReader final : public IProcessReader, public IProcessInspector {
+/// Also implements IProcessInspector (path/module/identity queries) and
+/// IProcessMemoryMap (readable-region enumeration) on the same attached
+/// process, through the same handle -- see docs/05-process-access.md for
+/// why this is one class implementing several focused interfaces rather
+/// than either bloating IProcessReader or standing up separate classes
+/// that would each need their own (redundant) OS handle to the same
+/// process.
+class Win32ProcessReader final : public IProcessReader, public IProcessInspector, public IProcessMemoryMap {
 public:
     /// `api` must outlive this reader.
     explicit Win32ProcessReader(IWin32Api& api = RealWin32Api());
@@ -66,6 +68,9 @@ public:
     ProcessInspectionResult GetImagePath(std::filesystem::path& outPath) override;
     ProcessInspectionResult GetMainModule(ModuleInfo& outModule) override;
     ProcessInspectionResult FindModuleExact(const std::string& moduleName, ModuleInfo& outModule) override;
+
+    // IProcessMemoryMap
+    MemoryMapResult EnumerateReadableRegions(std::vector<ProcessMemoryRegion>& outRegions) const override;
 
     /// The process-wide real IWin32Api instance, used as this class's
     /// default constructor argument.
