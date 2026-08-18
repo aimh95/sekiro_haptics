@@ -59,7 +59,10 @@ if(TARGET sekiro_haptics_win32_process)
         test_aob_scanner_integration.cpp
         test_address_resolver_integration.cpp
         test_signal_probe_integration.cpp
-        test_disk_candidate_scanner_integration.cpp
+        # test_disk_candidate_scanner_integration.cpp -- NOT YET WRITTEN.
+        # SEK-PROBE-001C's helper-process-based end-to-end integration test
+        # was deliberately deferred out of the Linux checkpoint (Win32-only,
+        # unverifiable there). Add this line back once that file exists.
     )
     target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics_win32_process)
 
