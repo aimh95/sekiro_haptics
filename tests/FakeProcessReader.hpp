@@ -8,10 +8,12 @@
 
 #include "sekiro_haptics/process/IProcessReader.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace sekiro_haptics::process {
 
@@ -29,6 +31,16 @@ public:
 
     /// The Nth ReadBytes() call (0-based) reports a hard failure.
     void FailReadAtCall(int callIndex) { failReadAtCall_ = callIndex; }
+
+    /// Like FailReadAtCall(), but for more than one call index at once --
+    /// e.g. a coalesced read AND one specific per-address fallback read
+    /// within the same test.
+    void FailReadAtCalls(std::vector<int> callIndices) { failReadAtCalls_ = std::move(callIndices); }
+
+    /// The Nth ReadBytes() call (0-based) reports ProcessExited, as if the
+    /// process disappeared partway through a multi-call scan (distinct
+    /// from SetAlive(false), which makes every call fail from the start).
+    void FailAsProcessExitedAtCall(int callIndex) { processExitedAtCall_ = callIndex; }
 
     /// The Nth ReadBytes() call (0-based) reports success but only
     /// `actualBytes` bytes read.
@@ -71,6 +83,13 @@ public:
         if (failReadAtCall_.has_value() && *failReadAtCall_ == callIndex) {
             return ProcessReaderResult::ReadFailed;
         }
+        if (failReadAtCalls_.has_value() &&
+            std::find(failReadAtCalls_->begin(), failReadAtCalls_->end(), callIndex) != failReadAtCalls_->end()) {
+            return ProcessReaderResult::ReadFailed;
+        }
+        if (processExitedAtCall_.has_value() && *processExitedAtCall_ == callIndex) {
+            return ProcessReaderResult::ProcessExited;
+        }
 
         std::size_t toRead = requestedSize;
         bool partial = false;
@@ -93,6 +112,8 @@ private:
     std::uint32_t pid_ = 1;
     std::unordered_map<std::uintptr_t, std::uint8_t> memory_;
     std::optional<int> failReadAtCall_;
+    std::optional<std::vector<int>> failReadAtCalls_;
+    std::optional<int> processExitedAtCall_;
     std::optional<std::pair<int, std::size_t>> partialReadAtCall_;
     int readCalls_ = 0;
 };

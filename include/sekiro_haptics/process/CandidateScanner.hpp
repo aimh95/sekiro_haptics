@@ -71,6 +71,11 @@ enum class CandidateScanScope {
     AllReadable,
 };
 
+/// Returns a human-readable name for a CandidateScanScope ("main-module",
+/// "private-readable", "all-readable" -- matching the CLI's own verb
+/// spelling), e.g. for logging or manifest serialization.
+const char* ToString(CandidateScanScope scope);
+
 /// Outcome of BeginCandidateScan().
 enum class CandidateScanResult {
     Success,

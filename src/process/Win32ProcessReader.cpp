@@ -80,29 +80,6 @@ std::string WideToUtf8(const std::wstring& wide) {
 
 } // namespace
 
-const char* ToString(ProcessReaderResult result) {
-    switch (result) {
-        case ProcessReaderResult::Success:
-            return "Success";
-        case ProcessReaderResult::NotAttached:
-            return "NotAttached";
-        case ProcessReaderResult::ProcessNotFound:
-            return "ProcessNotFound";
-        case ProcessReaderResult::MultipleMatches:
-            return "MultipleMatches";
-        case ProcessReaderResult::OpenFailed:
-            return "OpenFailed";
-        case ProcessReaderResult::ProcessExited:
-            return "ProcessExited";
-        case ProcessReaderResult::InvalidArgument:
-            return "InvalidArgument";
-        case ProcessReaderResult::ReadFailed:
-            return "ReadFailed";
-        case ProcessReaderResult::PartialRead:
-            return "PartialRead";
-    }
-    return "Unknown";
-}
 
 Win32ProcessReader::Win32ProcessReader(IWin32Api& api) : api_(api) {}
 
@@ -205,36 +182,6 @@ ProcessReaderResult Win32ProcessReader::ReadBytes(std::uintptr_t address, void* 
         return ProcessReaderResult::PartialRead;
     }
     return ProcessReaderResult::Success;
-}
-
-const char* ToString(ProcessInspectionResult result) {
-    switch (result) {
-        case ProcessInspectionResult::Success:
-            return "Success";
-        case ProcessInspectionResult::NotAttached:
-            return "NotAttached";
-        case ProcessInspectionResult::ProcessExited:
-            return "ProcessExited";
-        case ProcessInspectionResult::ImagePathQueryFailed:
-            return "ImagePathQueryFailed";
-        case ProcessInspectionResult::ModuleEnumerationFailed:
-            return "ModuleEnumerationFailed";
-        case ProcessInspectionResult::MainModuleNotFound:
-            return "MainModuleNotFound";
-        case ProcessInspectionResult::ModuleNotFound:
-            return "ModuleNotFound";
-        case ProcessInspectionResult::MultipleModules:
-            return "MultipleModules";
-        case ProcessInspectionResult::InvalidModuleRange:
-            return "InvalidModuleRange";
-        case ProcessInspectionResult::FileOpenFailed:
-            return "FileOpenFailed";
-        case ProcessInspectionResult::FileReadFailed:
-            return "FileReadFailed";
-        case ProcessInspectionResult::HashFailed:
-            return "HashFailed";
-    }
-    return "Unknown";
 }
 
 ProcessInspectionResult Win32ProcessReader::GetImagePath(std::filesystem::path& outPath) {
@@ -420,24 +367,6 @@ MemoryMapResult Win32ProcessReader::EnumerateReadableRegions(std::vector<Process
 
     outRegions = std::move(collected);
     return MemoryMapResult::Success;
-}
-
-const char* ToString(MemoryMapResult result) {
-    switch (result) {
-        case MemoryMapResult::Success:
-            return "Success";
-        case MemoryMapResult::NotAttached:
-            return "NotAttached";
-        case MemoryMapResult::ProcessExited:
-            return "ProcessExited";
-        case MemoryMapResult::EnumerationFailed:
-            return "EnumerationFailed";
-        case MemoryMapResult::AddressOverflow:
-            return "AddressOverflow";
-        case MemoryMapResult::RegionCountLimitExceeded:
-            return "RegionCountLimitExceeded";
-    }
-    return "Unknown";
 }
 
 } // namespace sekiro_haptics::process

@@ -30,15 +30,19 @@ add_library(sekiro_haptics STATIC
     src/replay/ExpectedEventRepository.cpp
     src/replay/ReplayComparator.cpp
     src/pipeline/ReplayPipeline.cpp
-    src/process/Win32Api.cpp
-    src/process/Win32ProcessReader.cpp
-    src/process/ExecutableIdentity.cpp
     src/process/AobPattern.cpp
     src/process/AobScanner.cpp
     src/process/RipRelative.cpp
     src/process/SignatureProfileRepository.cpp
     src/process/AddressResolver.cpp
+    src/process/IProcessMemoryMap.cpp
+    src/process/IProcessInspector.cpp
+    src/process/IProcessReader.cpp
     src/process/CandidateScanner.cpp
+    src/process/CandidateScanShared.cpp
+    src/process/ScanManifest.cpp
+    src/process/CandidateStorage.cpp
+    src/process/DiskCandidateScanner.cpp
     src/process/DiscoverySession.cpp
 )
 target_include_directories(sekiro_haptics PUBLIC
@@ -49,15 +53,42 @@ target_compile_features(sekiro_haptics PUBLIC cxx_std_20)
 find_package(Threads REQUIRED)
 target_link_libraries(sekiro_haptics PUBLIC Threads::Threads)
 
-# bcrypt: Windows' built-in cryptography API (CNG), used only for the
-# SHA-256 executable-identity hash in src/process/ExecutableIdentity.cpp.
-# No third-party crypto library added.
-target_link_libraries(sekiro_haptics PRIVATE bcrypt)
-
 if(MSVC)
     target_compile_options(sekiro_haptics PRIVATE /W4)
 else()
     target_compile_options(sekiro_haptics PRIVATE -Wall -Wextra)
+endif()
+
+# Win32-only process-access implementations (real OpenProcess/ReadProcessMemory
+# calls, real CNG file hashing) -- kept in their own target, separate from
+# the core sekiro_haptics library, so everything in process/ that only
+# depends on the IProcessReader/IProcessMemoryMap/IProcessInspector
+# interfaces plus test Fakes (AobScanner, AddressResolver, CandidateScanner,
+# the disk-backed scanner added in SEK-PROBE-001C, and all of their tests)
+# builds and runs on any OS, including non-Windows development machines.
+# Real Sekiro attachment, the signal-probe CLI, and every integration test
+# that spawns a real helper process to attach to remain Windows-only --
+# see docs/05-process-access.md.
+if(WIN32)
+    add_library(sekiro_haptics_win32_process STATIC
+        src/process/Win32Api.cpp
+        src/process/Win32ProcessReader.cpp
+        src/process/ExecutableIdentity.cpp
+    )
+    target_include_directories(sekiro_haptics_win32_process PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    )
+    target_link_libraries(sekiro_haptics_win32_process PUBLIC sekiro_haptics)
+    # bcrypt: Windows' built-in cryptography API (CNG), used only for the
+    # SHA-256 executable-identity hash in src/process/ExecutableIdentity.cpp.
+    # No third-party crypto library added.
+    target_link_libraries(sekiro_haptics_win32_process PRIVATE bcrypt)
+
+    if(MSVC)
+        target_compile_options(sekiro_haptics_win32_process PRIVATE /W4)
+    else()
+        target_compile_options(sekiro_haptics_win32_process PRIVATE -Wall -Wextra)
+    endif()
 endif()
 
 # HIDAPI-based USB transport spike for a real DualSense controller. Kept as
@@ -100,7 +131,9 @@ endif()
 if(SEKIRO_HAPTICS_BUILD_APPS)
     add_subdirectory(apps/console_test)
     add_subdirectory(apps/replay_cli)
-    add_subdirectory(apps/sekiro_signal_probe)
+    if(TARGET sekiro_haptics_win32_process)
+        add_subdirectory(apps/sekiro_signal_probe)
+    endif()
     if(TARGET sekiro_haptics_dualsense_transport)
         add_subdirectory(apps/dualsense_rumble_test)
         add_subdirectory(apps/replay_hardware)

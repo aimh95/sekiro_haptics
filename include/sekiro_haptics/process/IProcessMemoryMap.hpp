@@ -25,6 +25,10 @@ enum class MemoryRegionKind {
     Private,
 };
 
+/// Returns a human-readable name for a MemoryRegionKind, e.g. for logging
+/// or manifest serialization.
+const char* ToString(MemoryRegionKind kind);
+
 /// One committed, readable memory region in an attached process.
 /// Everything here is a *fact about the region*, not a guarantee about any
 /// specific future read -- the process's memory map can change between
