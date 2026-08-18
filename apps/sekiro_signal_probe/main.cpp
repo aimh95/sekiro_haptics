@@ -14,19 +14,30 @@
 // Then, interactively:
 //   identity
 //   regions
+//   plan <u8|u16|u32|i32|f32> <main-module|private-readable|all-readable>
 //   begin <u8|u16|u32|i32|f32> <main-module|private-readable|all-readable>
+//   begin-disk <u8|u16|u32|i32|f32> <main-module|private-readable|all-readable>
 //   filter changed|unchanged|increased|decreased
 //   filter exact <value>
+//   resume
 //   status
 //   list <count>
 //   watch <address> <u8|u16|u32|i32|f32> <signal-name>
 //   mark <label>
 //   stop
 //   quit
+//
+// plan/begin/begin-disk/filter/resume/status(scan fields)/list are handled
+// by SignalProbeScanController + SignalProbeCommandProcessor (portable,
+// Fake-testable on any OS -- see SignalProbeScanController.hpp). This file
+// stays a thin Win32 adapter: real process attach, real identity lookup,
+// and stdin/stdout wiring only -- see docs/06-signal-discovery-probe.md.
 
 #include "sekiro_haptics/process/CandidateScanner.hpp"
 #include "sekiro_haptics/process/DiscoverySession.hpp"
 #include "sekiro_haptics/process/ExecutableIdentity.hpp"
+#include "sekiro_haptics/process/SignalProbeCommandProcessor.hpp"
+#include "sekiro_haptics/process/SignalProbeScanController.hpp"
 #include "sekiro_haptics/process/Win32ProcessReader.hpp"
 
 #include <chrono>
@@ -128,22 +139,6 @@ std::string WallClockNowIso8601() {
     return oss.str();
 }
 
-std::optional<CandidateValueType> ParseValueType(const std::string& text) {
-    if (text == "u8") return CandidateValueType::U8;
-    if (text == "u16") return CandidateValueType::U16;
-    if (text == "u32") return CandidateValueType::U32;
-    if (text == "i32") return CandidateValueType::I32;
-    if (text == "f32") return CandidateValueType::F32;
-    return std::nullopt;
-}
-
-std::optional<CandidateScanScope> ParseScope(const std::string& text) {
-    if (text == "main-module") return CandidateScanScope::MainModule;
-    if (text == "private-readable") return CandidateScanScope::PrivateReadable;
-    if (text == "all-readable") return CandidateScanScope::AllReadable;
-    return std::nullopt;
-}
-
 std::optional<std::uintptr_t> ParseAddress(const std::string& text) {
     try {
         std::size_t consumed = 0;
@@ -155,54 +150,6 @@ std::optional<std::uintptr_t> ParseAddress(const std::string& text) {
     } catch (...) {
         return std::nullopt;
     }
-}
-
-std::optional<CandidateValue> ParseValueForType(const std::string& text, CandidateValueType type) {
-    try {
-        std::size_t consumed = 0;
-        if (type == CandidateValueType::F32) {
-            float f = std::stof(text, &consumed);
-            if (consumed != text.size()) return std::nullopt;
-            return CandidateValue{f};
-        }
-        if (type == CandidateValueType::I32) {
-            long long v = std::stoll(text, &consumed, 0);
-            if (consumed != text.size()) return std::nullopt;
-            return CandidateValue{static_cast<std::int32_t>(v)};
-        }
-        unsigned long long v = std::stoull(text, &consumed, 0);
-        if (consumed != text.size()) return std::nullopt;
-        switch (type) {
-            case CandidateValueType::U8: return CandidateValue{static_cast<std::uint8_t>(v)};
-            case CandidateValueType::U16: return CandidateValue{static_cast<std::uint16_t>(v)};
-            case CandidateValueType::U32: return CandidateValue{static_cast<std::uint32_t>(v)};
-            default: return std::nullopt;
-        }
-    } catch (...) {
-        return std::nullopt;
-    }
-}
-
-std::string FormatCandidateValue(CandidateValueType type, const CandidateValue& value) {
-    std::ostringstream oss;
-    switch (type) {
-        case CandidateValueType::U8:
-            oss << static_cast<unsigned int>(std::get<std::uint8_t>(value));
-            break;
-        case CandidateValueType::U16:
-            oss << std::get<std::uint16_t>(value);
-            break;
-        case CandidateValueType::U32:
-            oss << std::get<std::uint32_t>(value);
-            break;
-        case CandidateValueType::I32:
-            oss << std::get<std::int32_t>(value);
-            break;
-        case CandidateValueType::F32:
-            oss << std::get<float>(value);
-            break;
-    }
-    return oss.str();
 }
 
 struct CliOptions {
@@ -324,13 +271,24 @@ int main(int argc, char** argv) {
               << " size=0x" << mainModule.imageSize << std::dec << "\n";
     std::cout << "[probe] session metadata written to " << metadataPath.string() << "\n";
     std::cout << "[probe] this tool never writes to the target process -- read-only for the whole session.\n";
-    std::cout << "[probe] scan caps: --max-candidates=" << options.maxCandidates
+    std::cout << "[probe] in-memory secondary caps: --max-candidates=" << options.maxCandidates
                << " --max-scan-bytes=" << options.maxScanBytes
-               << " (override with --max-candidates/--max-scan-bytes if \"begin\" hits CandidateLimitExceeded)\n";
+               << " -- if \"begin\" is refused or fails, use \"plan\" then \"begin-disk\" instead of raising these.\n";
 
-    std::vector<Candidate> candidates;
-    std::optional<CandidateValueType> currentType;
-    std::optional<CandidateScanScope> currentScope;
+    SignalProbeControllerConfig controllerConfig;
+    controllerConfig.outputDir = options.outputDir;
+    controllerConfig.maxCandidates = options.maxCandidates;
+    controllerConfig.maxScanBytes = options.maxScanBytes;
+
+    ScanControllerIdentity controllerIdentity;
+    controllerIdentity.executableFileSizeBytes = identity.fileSizeBytes;
+    controllerIdentity.sha256Hex = metadata.sha256Hex;
+    controllerIdentity.pid = reader.Pid();
+    controllerIdentity.mainModuleBaseAddress = mainModule.baseAddress;
+    controllerIdentity.mainModuleImageSize = mainModule.imageSize;
+
+    SignalProbeScanController controller(reader, reader, reader, controllerConfig, controllerIdentity);
+    SignalProbeCommandProcessor processor(controller);
 
     std::vector<WatchTarget> watches;
     std::optional<DiscoveryWatchWriter> watchWriter;
@@ -414,7 +372,31 @@ int main(int argc, char** argv) {
 
         if (verb.empty()) {
             continue;
-        } else if (verb == "quit") {
+        }
+
+        SignalProbeCommandProcessor::ProcessResult processorResult = processor.Process(command);
+        if (processorResult.handled) {
+            for (const std::string& line : processorResult.outputLines) {
+                std::cout << line << "\n";
+            }
+            if (verb == "status") {
+                std::cout << "watches=" << watches.size() << "\n";
+            }
+            if (controller.Mode() != ScanMode::None) {
+                StatusSnapshot snapshot = controller.Status();
+                if (controller.CurrentValueType().has_value()) {
+                    metadata.selectedValueType = ToString(*controller.CurrentValueType());
+                }
+                if (snapshot.mode == ScanMode::InMemory && snapshot.inMemoryScope.has_value()) {
+                    metadata.selectedScope = ToString(*snapshot.inMemoryScope);
+                } else if (snapshot.mode == ScanMode::Disk && snapshot.diskManifest.has_value()) {
+                    metadata.selectedScope = snapshot.diskManifest->identity.scope;
+                }
+            }
+            continue;
+        }
+
+        if (verb == "quit") {
             endedNormally = true;
             endReason = "quit";
             break;
@@ -443,93 +425,15 @@ int main(int argc, char** argv) {
             std::cout << "  image-kind: " << imageCount << " region(s), " << imageBytes << " byte(s)\n";
             std::cout << "  mapped-kind: " << mappedCount << " region(s), " << mappedBytes << " byte(s)\n";
             std::cout << "private-readable: " << privateCount << " region(s), " << privateBytes << " byte(s)\n";
-        } else if (verb == "begin") {
-            std::string typeText, scopeText;
-            iss >> typeText >> scopeText;
-            auto type = ParseValueType(typeText);
-            auto scope = ParseScope(scopeText);
-            if (!type.has_value() || !scope.has_value()) {
-                std::cout << "usage: begin <u8|u16|u32|i32|f32> <main-module|private-readable|all-readable>\n";
-                continue;
-            }
-            std::vector<Candidate> newCandidates;
-            CandidateScanResult result = BeginCandidateScan(reader, reader, reader, *scope, *type, newCandidates,
-                                                              options.maxCandidates, options.maxScanBytes);
-            if (result != CandidateScanResult::Success) {
-                std::cout << "scan failed: " << ToString(result) << "\n";
-                if (result == CandidateScanResult::CandidateLimitExceeded) {
-                    std::cout << "  current caps: --max-candidates=" << options.maxCandidates
-                               << " --max-scan-bytes=" << options.maxScanBytes << "\n";
-                    std::cout << "  this scope has more distinct " << typeText
-                               << "-aligned values than that -- restart with a higher --max-candidates/--max-scan-bytes,\n";
-                    std::cout << "  or try a narrower scope (e.g. \"main-module\" first) -- see docs/06-signal-discovery-probe.md.\n";
-                }
-                continue;
-            }
-            candidates = std::move(newCandidates);
-            currentType = type;
-            currentScope = scope;
-            metadata.selectedValueType = typeText;
-            metadata.selectedScope = scopeText;
-            std::cout << "scan complete: " << candidates.size() << " candidate(s)\n";
-        } else if (verb == "filter") {
-            if (!currentType.has_value()) {
-                std::cout << "no active scan -- run \"begin\" first\n";
-                continue;
-            }
-            std::string kindText;
-            iss >> kindText;
-            CandidateFilterResult result = CandidateFilterResult::Success;
-            if (kindText == "changed") {
-                result = FilterCandidates(reader, candidates, CandidateFilterKind::Changed);
-            } else if (kindText == "unchanged") {
-                result = FilterCandidates(reader, candidates, CandidateFilterKind::Unchanged);
-            } else if (kindText == "increased") {
-                result = FilterCandidates(reader, candidates, CandidateFilterKind::Increased);
-            } else if (kindText == "decreased") {
-                result = FilterCandidates(reader, candidates, CandidateFilterKind::Decreased);
-            } else if (kindText == "exact") {
-                std::string valueText;
-                iss >> valueText;
-                auto target = ParseValueForType(valueText, *currentType);
-                if (!target.has_value()) {
-                    std::cout << "invalid value for current type\n";
-                    continue;
-                }
-                result = FilterCandidates(reader, candidates, CandidateFilterKind::ExactValue, &(*target));
-            } else {
-                std::cout << "usage: filter <changed|unchanged|increased|decreased|exact <value>>\n";
-                continue;
-            }
-            if (result != CandidateFilterResult::Success) {
-                std::cout << "filter failed: " << ToString(result) << "\n";
-                continue;
-            }
-            std::cout << "filter complete: " << candidates.size() << " candidate(s) remain\n";
-        } else if (verb == "status") {
-            std::cout << "candidates=" << candidates.size();
-            if (currentType.has_value()) std::cout << " type=" << ToString(*currentType);
-            std::cout << " watches=" << watches.size() << "\n";
-        } else if (verb == "list") {
-            std::size_t count = 10;
-            std::string countText;
-            if (iss >> countText) {
-                try { count = static_cast<std::size_t>(std::stoull(countText)); } catch (...) {}
-            }
-            std::size_t shown = 0;
-            for (const Candidate& c : candidates) {
-                if (shown >= count) break;
-                std::cout << "0x" << std::hex << c.address << std::dec << " = "
-                           << FormatCandidateValue(c.type, c.value) << "\n";
-                ++shown;
-            }
         } else if (verb == "watch") {
             std::string addrText, typeText, nameText;
             iss >> addrText >> typeText;
             std::getline(iss, nameText);
             while (!nameText.empty() && nameText.front() == ' ') nameText.erase(nameText.begin());
             auto address = ParseAddress(addrText);
-            auto type = ParseValueType(typeText);
+            CandidateValueType parsedType;
+            std::optional<CandidateValueType> type =
+                ParseCandidateValueType(typeText, parsedType) ? std::optional<CandidateValueType>(parsedType) : std::nullopt;
             if (!address.has_value() || !type.has_value() || nameText.empty()) {
                 std::cout << "usage: watch <address> <u8|u16|u32|i32|f32> <signal-name>\n";
                 continue;

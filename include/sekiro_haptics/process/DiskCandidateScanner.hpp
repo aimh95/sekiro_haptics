@@ -207,4 +207,11 @@ PlanCandidateScanOutcome PlanCandidateScan(IProcessReader& reader, IProcessInspe
                                             CandidateValueType type, const std::filesystem::path& outputDrivePath,
                                             std::size_t memoryBudgetBytes, ScanPlanReport& outReport);
 
+/// The file name (no directory) a session's data file has for a given
+/// `generation`: "baseline.bin" for 0, "candidates-NNNN.bin" for >=1 --
+/// the exact naming BeginDiskCandidateScan()/FilterDiskCandidates() use.
+/// Exposed so callers (the CLI's `status` command) can report which file
+/// is current without duplicating the naming scheme.
+std::string CurrentDataFileName(int generation);
+
 } // namespace sekiro_haptics::process

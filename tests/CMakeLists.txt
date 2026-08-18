@@ -33,6 +33,9 @@ add_executable(sekiro_haptics_tests
     test_disk_first_filter.cpp
     test_disk_generation_chain.cpp
     test_disk_scan_resume.cpp
+    # SEK-PROBE-001C-2 -- OS-independent command/state controller wiring
+    # the disk-backed scanner into the probe CLI. Same portability as above.
+    test_signal_probe_controller.cpp
 )
 target_include_directories(sekiro_haptics_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics)
@@ -59,10 +62,12 @@ if(TARGET sekiro_haptics_win32_process)
         test_aob_scanner_integration.cpp
         test_address_resolver_integration.cpp
         test_signal_probe_integration.cpp
-        # test_disk_candidate_scanner_integration.cpp -- NOT YET WRITTEN.
-        # SEK-PROBE-001C's helper-process-based end-to-end integration test
-        # was deliberately deferred out of the Linux checkpoint (Win32-only,
-        # unverifiable there). Add this line back once that file exists.
+        # SEK-PROBE-001C-2 -- disk-backed scanner end-to-end integration
+        # test, reusing process_reader_helper_main.cpp unmodified. Win32-only
+        # (spawns and attaches to a real process) -- written and registered
+        # here, but never executed in the Linux development sandbox. Must be
+        # run on a real Windows machine before being reported as verified.
+        test_disk_candidate_scanner_integration.cpp
     )
     target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics_win32_process)
 

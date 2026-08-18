@@ -43,6 +43,8 @@ add_library(sekiro_haptics STATIC
     src/process/ScanManifest.cpp
     src/process/CandidateStorage.cpp
     src/process/DiskCandidateScanner.cpp
+    src/process/SignalProbeScanController.cpp
+    src/process/SignalProbeCommandProcessor.cpp
     src/process/DiscoverySession.cpp
 )
 target_include_directories(sekiro_haptics PUBLIC

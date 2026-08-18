@@ -59,23 +59,6 @@ DiskScanOutcome MapMemoryMapFailure(MemoryMapResult result) {
     }
 }
 
-bool ParseValueTypeText(const std::string& text, CandidateValueType& outType) {
-    if (text == "u8") {
-        outType = CandidateValueType::U8;
-    } else if (text == "u16") {
-        outType = CandidateValueType::U16;
-    } else if (text == "u32") {
-        outType = CandidateValueType::U32;
-    } else if (text == "i32") {
-        outType = CandidateValueType::I32;
-    } else if (text == "f32") {
-        outType = CandidateValueType::F32;
-    } else {
-        return false;
-    }
-    return true;
-}
-
 /// "candidates-0001", "candidates-0002", ... -- matches the ticket's own
 /// example naming exactly.
 std::string GenerationFileBaseName(int generation) {
@@ -142,6 +125,13 @@ const char* ToString(PlanCandidateScanOutcome outcome) {
             return "InsufficientDiskSpace";
     }
     return "Unknown";
+}
+
+std::string CurrentDataFileName(int generation) {
+    if (generation == 0) {
+        return "baseline.bin";
+    }
+    return GenerationFileBaseName(generation) + ".bin";
 }
 
 const char* ToString(RecommendedStorageMode mode) {
@@ -655,7 +645,7 @@ DiskScanOutcome FilterDiskCandidates(IProcessReader& reader, const std::filesyst
     }
 
     CandidateValueType type;
-    if (!ParseValueTypeText(manifest.identity.valueType, type)) {
+    if (!ParseCandidateValueType(manifest.identity.valueType, type)) {
         outStats = stats;
         return DiskScanOutcome::CorruptFile;
     }
@@ -799,7 +789,7 @@ DiskScanOutcome ResumeDiskCandidateSession(const std::filesystem::path& sessionD
     }
 
     CandidateValueType type;
-    if (!ParseValueTypeText(manifest.identity.valueType, type)) {
+    if (!ParseCandidateValueType(manifest.identity.valueType, type)) {
         return DiskScanOutcome::CorruptFile;
     }
 

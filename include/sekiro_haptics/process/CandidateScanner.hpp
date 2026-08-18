@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -37,6 +38,14 @@ std::size_t CandidateValueTypeSize(CandidateValueType type);
 /// Short lowercase name for `type` ("u8", "u16", "u32", "i32", "f32") --
 /// used by the CLI and by session/watch record serialization.
 const char* ToString(CandidateValueType type);
+
+/// Parses text previously produced by ToString(CandidateValueType) ("u8",
+/// "u16", "u32", "i32", "f32") back into a CandidateValueType. Returns
+/// false (leaving `outType` untouched) for anything else -- the single
+/// source of truth for this mapping, used by the CLI's argument parsing
+/// and by ScanManifest's identity round-trip alike, so the two can never
+/// silently drift apart.
+bool ParseCandidateValueType(const std::string& text, CandidateValueType& outType);
 
 /// A decoded candidate value, tagged by which alternative is active via
 /// the owning Candidate's `type` -- callers always know which alternative
@@ -75,6 +84,11 @@ enum class CandidateScanScope {
 /// "private-readable", "all-readable" -- matching the CLI's own verb
 /// spelling), e.g. for logging or manifest serialization.
 const char* ToString(CandidateScanScope scope);
+
+/// Parses text previously produced by ToString(CandidateScanScope) back
+/// into a CandidateScanScope. Returns false (leaving `outScope` untouched)
+/// for anything else.
+bool ParseCandidateScanScope(const std::string& text, CandidateScanScope& outScope);
 
 /// Outcome of BeginCandidateScan().
 enum class CandidateScanResult {

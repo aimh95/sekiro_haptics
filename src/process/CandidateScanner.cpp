@@ -75,6 +75,19 @@ const char* ToString(CandidateScanScope scope) {
     return "unknown";
 }
 
+bool ParseCandidateScanScope(const std::string& text, CandidateScanScope& outScope) {
+    if (text == "main-module") {
+        outScope = CandidateScanScope::MainModule;
+    } else if (text == "private-readable") {
+        outScope = CandidateScanScope::PrivateReadable;
+    } else if (text == "all-readable") {
+        outScope = CandidateScanScope::AllReadable;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 const char* ToString(CandidateValueType type) {
     switch (type) {
         case CandidateValueType::U8:
@@ -89,6 +102,23 @@ const char* ToString(CandidateValueType type) {
             return "f32";
     }
     return "unknown";
+}
+
+bool ParseCandidateValueType(const std::string& text, CandidateValueType& outType) {
+    if (text == "u8") {
+        outType = CandidateValueType::U8;
+    } else if (text == "u16") {
+        outType = CandidateValueType::U16;
+    } else if (text == "u32") {
+        outType = CandidateValueType::U32;
+    } else if (text == "i32") {
+        outType = CandidateValueType::I32;
+    } else if (text == "f32") {
+        outType = CandidateValueType::F32;
+    } else {
+        return false;
+    }
+    return true;
 }
 
 CandidateScanResult BeginCandidateScan(IProcessReader& reader, IProcessInspector& inspector,
