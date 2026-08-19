@@ -86,4 +86,54 @@ if(TARGET sekiro_haptics_win32_process)
     add_dependencies(sekiro_haptics_tests sekiro_haptics_process_reader_helper)
 endif()
 
+# SEK-PROBE-001C-LINUX-E2E -- Linux-only, real-child-process disk-backed
+# scanner verification. Native Linux stands in for the real Windows/Sekiro
+# attach this sandbox cannot perform: a real forked child process, real
+# process_vm_readv()/proc-maps-backed IProcessReader/IProcessInspector/
+# IProcessMemoryMap implementation (LinuxChildProcessReader), and the real,
+# unmodified SignalProbeScanController/DiskCandidateScanner/CandidateStorage/
+# ScanManifest production code. Test-only -- never linked into any
+# production/Windows target, and never promoted to a Linux/Proton product
+# backend (see docs/06-signal-discovery-probe.md).
+if(UNIX AND NOT APPLE)
+    # Real, separate, harmless child process with a known mmap arena --
+    # not part of the production project, not a stand-in for any real game.
+    add_executable(sekiro_haptics_linux_signal_probe_helper linux_signal_probe_helper.cpp)
+
+    # Test-only Linux process adapter + shared E2E scenario logic, used by
+    # both the CTest-registered integration test and the manual runner
+    # below. Links sekiro_haptics for the real scanner/controller code it
+    # drives -- this library is never linked into any Windows target.
+    add_library(sekiro_haptics_linux_probe_test_support STATIC
+        LinuxChildProcessReader.cpp
+        LinuxProbeE2EScenario.cpp
+    )
+    target_include_directories(sekiro_haptics_linux_probe_test_support PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(sekiro_haptics_linux_probe_test_support PUBLIC sekiro_haptics)
+    if(MSVC)
+        target_compile_options(sekiro_haptics_linux_probe_test_support PRIVATE /W4)
+    else()
+        target_compile_options(sekiro_haptics_linux_probe_test_support PRIVATE -Wall -Wextra)
+    endif()
+    target_compile_definitions(sekiro_haptics_linux_probe_test_support PRIVATE
+        SH_LINUX_SIGNAL_PROBE_HELPER_EXE="$<TARGET_FILE:sekiro_haptics_linux_signal_probe_helper>")
+    add_dependencies(sekiro_haptics_linux_probe_test_support sekiro_haptics_linux_signal_probe_helper)
+
+    target_sources(sekiro_haptics_tests PRIVATE test_disk_candidate_scanner_linux_e2e.cpp)
+    target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics_linux_probe_test_support)
+    target_compile_definitions(sekiro_haptics_tests PRIVATE
+        SH_LINUX_SIGNAL_PROBE_HELPER_EXE="$<TARGET_FILE:sekiro_haptics_linux_signal_probe_helper>")
+    add_dependencies(sekiro_haptics_tests sekiro_haptics_linux_signal_probe_helper)
+
+    # Manual, non-CTest runner for a human (or Claude) to run directly at a
+    # realistic scale (default 256 MiB) -- see
+    # docs/06-signal-discovery-probe.md for exact invocation instructions.
+    add_executable(sekiro_haptics_linux_probe_e2e linux_probe_e2e_main.cpp)
+    target_include_directories(sekiro_haptics_linux_probe_e2e PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(sekiro_haptics_linux_probe_e2e PRIVATE sekiro_haptics_linux_probe_test_support)
+    target_compile_definitions(sekiro_haptics_linux_probe_e2e PRIVATE
+        SH_LINUX_SIGNAL_PROBE_HELPER_EXE="$<TARGET_FILE:sekiro_haptics_linux_signal_probe_helper>")
+    add_dependencies(sekiro_haptics_linux_probe_e2e sekiro_haptics_linux_signal_probe_helper)
+endif()
+
 add_test(NAME sekiro_haptics_unit_tests COMMAND sekiro_haptics_tests)
