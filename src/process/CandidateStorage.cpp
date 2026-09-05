@@ -63,6 +63,10 @@ BaselineWriter::BaselineWriter(std::filesystem::path path, CandidateValueType ty
       totalValueCount_(totalValueCount) {}
 
 BaselineWriter::~BaselineWriter() {
+    Close();
+}
+
+void BaselineWriter::Close() {
     if (stream_.is_open()) {
         stream_.close();
     }
@@ -190,7 +194,15 @@ bool BaselineWriter::IsFailed() const {
 
 BaselineReader::BaselineReader(std::filesystem::path path) : path_(std::move(path)) {}
 
-BaselineReader::~BaselineReader() = default;
+BaselineReader::~BaselineReader() {
+    Close();
+}
+
+void BaselineReader::Close() {
+    if (stream_.is_open()) {
+        stream_.close();
+    }
+}
 
 CandidateStorageResult BaselineReader::Open(std::uint64_t expectedTotalValueCount, CandidateValueType expectedType) {
     stream_.open(path_, std::ios::binary | std::ios::in);
@@ -355,6 +367,10 @@ GenerationWriter::GenerationWriter(std::filesystem::path path, CandidateValueTyp
     : path_(std::move(path)), type_(type), valueSize_(CandidateValueTypeSize(type)), generationNumber_(generationNumber) {}
 
 GenerationWriter::~GenerationWriter() {
+    Close();
+}
+
+void GenerationWriter::Close() {
     if (stream_.is_open()) {
         stream_.close();
     }
@@ -446,7 +462,15 @@ bool GenerationWriter::IsFailed() const {
 
 GenerationReader::GenerationReader(std::filesystem::path path) : path_(std::move(path)) {}
 
-GenerationReader::~GenerationReader() = default;
+GenerationReader::~GenerationReader() {
+    Close();
+}
+
+void GenerationReader::Close() {
+    if (stream_.is_open()) {
+        stream_.close();
+    }
+}
 
 CandidateStorageResult GenerationReader::Open(std::uint64_t expectedRecordCount, CandidateValueType expectedType,
                                                int expectedGeneration) {

@@ -107,6 +107,7 @@ SH_TEST(BeginDiskCandidateScan_FullCoverage_ProducesCompleteBaselineAndManifest)
         SH_CHECK(v == 100 + i);
     }
 
+    baselineReader.Close();
     std::filesystem::remove_all(sessionDir);
 }
 

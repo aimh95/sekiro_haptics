@@ -111,6 +111,13 @@ public:
 
     bool IsFailed() const;
 
+    /// Closes the underlying file explicitly. Finish() already closes on
+    /// its success path; this exists for the failure paths (which leave
+    /// the file open, since a caller might want to inspect `IsFailed()`
+    /// state first) and for any caller that needs the file unlocked before
+    /// this object goes out of scope. Safe to call more than once.
+    void Close();
+
 private:
     std::filesystem::path path_;
     CandidateValueType type_;
@@ -157,6 +164,14 @@ public:
     CandidateValueType ValueType() const;
     std::size_t ValueSize() const;
     bool Failed() const;
+
+    /// Closes the underlying file explicitly. Also done by the destructor,
+    /// but callers that need the file unlocked *before* this object goes
+    /// out of scope (e.g. immediately deleting it afterward) must call this
+    /// first -- an open read handle can prevent deletion/rename on some
+    /// platforms even though it never does on others. Safe to call more
+    /// than once.
+    void Close();
 
 private:
     struct RegionEntry {
@@ -217,6 +232,11 @@ public:
     CandidateStorageResult Finish();
     bool IsFailed() const;
 
+    /// Closes the underlying file explicitly -- see BaselineWriter::Close()
+    /// for why this exists alongside Finish()/the destructor. Safe to call
+    /// more than once.
+    void Close();
+
 private:
     std::filesystem::path path_;
     CandidateValueType type_;
@@ -248,6 +268,11 @@ public:
     CandidateValueType ValueType() const;
     std::size_t ValueSize() const;
     bool Failed() const;
+
+    /// Closes the underlying file explicitly -- see BaselineReader::Close()
+    /// for why this exists alongside the destructor. Safe to call more than
+    /// once.
+    void Close();
 
 private:
     std::filesystem::path path_;

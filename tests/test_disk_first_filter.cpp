@@ -129,6 +129,7 @@ SH_TEST(FilterDiskCandidates_FirstFilterDecreased_KeepsOnlyDecreasedValuesAddres
     SH_CHECK(v == 10);
     SH_CHECK(genReader.NextRecord(addr, buf) == false);
 
+    genReader.Close();
     std::filesystem::remove_all(sessionDir);
 }
 

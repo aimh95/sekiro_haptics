@@ -277,6 +277,7 @@ SH_TEST(BaselineWriter_MultiRegionWithGaps_RoundTripsAndReconstructsAddresses) {
     std::uint64_t noMoreCount = 0;
     SH_CHECK(reader.NextRegion(noMoreRegion, noMoreCount) == false);
 
+    reader.Close();
     std::filesystem::remove(path);
 }
 
@@ -327,6 +328,7 @@ SH_TEST(BaselineReader_ReadRegionValueChunk_MultipleCallsCoverWholeRegionInOrder
         SH_CHECK(reconstructed[i] == i);
     }
 
+    reader.Close();
     std::filesystem::remove(path);
 }
 
@@ -351,6 +353,7 @@ SH_TEST(BaselineReader_Open_WrongExpectedValueCount_ReturnsSizeMismatch) {
     CandidateStorageResult result = reader.Open(count + 1, CandidateValueType::U32);
     SH_CHECK(result == CandidateStorageResult::SizeMismatch);
 
+    reader.Close();
     std::filesystem::remove(path);
 }
 
@@ -365,6 +368,7 @@ SH_TEST(BaselineReader_Open_CorruptHeaderMagic_ReturnsCorruptFile) {
     CandidateStorageResult result = reader.Open(0, CandidateValueType::U32);
     SH_CHECK(result == CandidateStorageResult::CorruptFile);
 
+    reader.Close();
     std::filesystem::remove(path);
 }
 
@@ -394,6 +398,7 @@ SH_TEST(BaselineReader_Open_TruncatedFile_IsRejected) {
               result == CandidateStorageResult::CorruptFile);
     SH_CHECK(reader.Failed());
 
+    reader.Close();
     std::filesystem::remove(path);
 }
 
@@ -412,6 +417,7 @@ SH_TEST(BaselineWriter_IncompleteRegion_FailsOnFinish) {
     SH_CHECK(writer.Finish() == CandidateStorageResult::WriteFailed);
     SH_CHECK(writer.IsFailed());
 
+    writer.Close();
     std::filesystem::remove(path);
 }
 
@@ -449,6 +455,7 @@ SH_TEST(GenerationWriter_RoundTripsThroughReader) {
 
     SH_CHECK(reader.NextRecord(addr, buf) == false);
 
+    reader.Close();
     std::filesystem::remove(path);
 }
 
@@ -461,6 +468,7 @@ SH_TEST(GenerationWriter_OutOfOrderAddress_FailsClosed) {
     SH_CHECK(writer.WriteRecord(0x1000, reinterpret_cast<std::uint8_t*>(&v)) == CandidateStorageResult::WriteFailed);
     SH_CHECK(writer.IsFailed());
 
+    writer.Close();
     std::filesystem::remove(path);
 }
 
@@ -477,6 +485,7 @@ SH_TEST(GenerationReader_Open_WrongGenerationNumber_ReturnsCorruptFile) {
     GenerationReader reader(path);
     SH_CHECK(reader.Open(1, CandidateValueType::U32, 2) == CandidateStorageResult::CorruptFile);
 
+    reader.Close();
     std::filesystem::remove(path);
 }
 
@@ -493,5 +502,6 @@ SH_TEST(GenerationReader_Open_WrongRecordCount_ReturnsSizeMismatch) {
     GenerationReader reader(path);
     SH_CHECK(reader.Open(2, CandidateValueType::U32, 1) == CandidateStorageResult::SizeMismatch);
 
+    reader.Close();
     std::filesystem::remove(path);
 }

@@ -117,6 +117,7 @@ SH_TEST(GenerationChain_DecreasedThenUnchangedThenIncreased_TracksCorrectSurvivo
     std::memcpy(&v, buf, 4);
     SH_CHECK(v == 80);
 
+    finalReader.Close();
     std::filesystem::remove_all(sessionDir);
 }
 

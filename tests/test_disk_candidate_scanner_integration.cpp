@@ -1,7 +1,7 @@
 // Real Win32 integration test for SEK-PROBE-001C-2's disk-backed scan path
 // wired into SignalProbeScanController: launches the actual helper
-// executable (process_reader_helper_main.cpp, reused completely
-// unmodified -- see its doc comment), attaches read-only, runs the real
+// executable (process_reader_helper_main.cpp, shared with the other
+// process/AOB/probe integration tests), attaches read-only, runs the real
 // plan -> begin-disk -> filter chain against real ReadProcessMemory calls,
 // simulates a CLI restart via a second, independent controller instance,
 // resumes the on-disk session, and confirms a post-exit filter attempt
@@ -9,11 +9,15 @@
 // HelperProcess's pipe/process-handle synchronization is reused as-is.
 //
 // g_watchIncrement and g_watchDecrement (process_reader_helper_main.cpp)
-// both start at exactly 1000, so "filter exact 1000" is used as the first
-// filter -- a fresh baseline's first filter may not be "unchanged" (see
-// DiskCandidateScanner.hpp's InitialFilterTooBroad), but "exact" is
-// allowed and deterministically seeds a 2-candidate generation without
-// requiring any change to the helper.
+// both start at exactly 0xCAFE1000 -- a distinctive magic value, not a
+// common small integer -- so "filter exact 0xCAFE1000" reliably seeds
+// exactly a 2-candidate generation as the first filter (a fresh baseline's
+// first filter may not be "unchanged", see DiskCandidateScanner.hpp's
+// InitialFilterTooBroad, but "exact" is allowed). An earlier version of
+// this test used a plain 1000 for both, which turned out to coincidentally
+// also match unrelated compiler-generated data elsewhere in the real
+// module -- the first time this test actually ran against a real Windows
+// process, it caught exactly this (see docs/06-signal-discovery-probe.md).
 //
 // NOTE: this file is registered in tests/CMakeLists.txt only inside the
 // if(TARGET sekiro_haptics_win32_process) block and has never been
@@ -102,19 +106,20 @@ SH_TEST(DiskCandidateScanner_Integration_RealHelperProcess_PlanBeginDiskFilterCh
     SH_CHECK(beginDiskResult.scanOutcome == DiskScanOutcome::CompleteCoverage);
     SH_CHECK(controller.Mode() == ScanMode::Disk);
 
-    // 5: "exact 1000" as the first filter -- both watchIncrement and
-    // watchDecrement start at exactly 1000, so both survive into generation 1.
-    CandidateValue exact1000 = std::uint32_t{1000};
-    FilterCommandResult exactResult = controller.Filter(CandidateFilterKind::ExactValue, &exact1000);
+    // 5: "exact 0xCAFE1000" as the first filter -- both watchIncrement and
+    // watchDecrement start at exactly that distinctive value, so both (and
+    // only those two) survive into generation 1.
+    CandidateValue exactStart = std::uint32_t{0xCAFE1000};
+    FilterCommandResult exactResult = controller.Filter(CandidateFilterKind::ExactValue, &exactStart);
     SH_CHECK(exactResult.outcome == FilterCommandOutcome::Success);
     SH_CHECK(exactResult.diskStats.survivingCandidateCount == 2);
     SH_CHECK(controller.Status().diskManifest->generation == 1);
 
     // 6: DECREMENT then INCREMENT via real pipe commands, each acked.
-    SH_CHECK(helper.SendCommandAndWaitForAck("DECREMENT")); // watchDecrement 1000 -> 990
-    SH_CHECK(helper.SendCommandAndWaitForAck("INCREMENT")); // watchIncrement 1000 -> 1010
+    SH_CHECK(helper.SendCommandAndWaitForAck("DECREMENT")); // watchDecrement 0xCAFE1000 -> 0xCAFE0FF6
+    SH_CHECK(helper.SendCommandAndWaitForAck("INCREMENT")); // watchIncrement 0xCAFE1000 -> 0xCAFE100A
 
-    // 7: "increased" -- only watchIncrement survives (990 < 1000 baseline).
+    // 7: "increased" -- only watchIncrement survives (watchDecrement went down).
     FilterCommandResult increasedResult = controller.Filter(CandidateFilterKind::Increased, nullptr);
     SH_CHECK(increasedResult.outcome == FilterCommandOutcome::Success);
     SH_CHECK(increasedResult.diskStats.survivingCandidateCount == 1);
@@ -133,7 +138,7 @@ SH_TEST(DiskCandidateScanner_Integration_RealHelperProcess_PlanBeginDiskFilterCh
     SH_CHECK(controller.Status().diskManifest->generation == 3);
 
     // 9: INCREMENT again, then "increased" -- generation 4.
-    SH_CHECK(helper.SendCommandAndWaitForAck("INCREMENT")); // watchIncrement 1010 -> 1020
+    SH_CHECK(helper.SendCommandAndWaitForAck("INCREMENT")); // watchIncrement 0xCAFE100A -> 0xCAFE1014
     FilterCommandResult increasedAgainResult = controller.Filter(CandidateFilterKind::Increased, nullptr);
     SH_CHECK(increasedAgainResult.outcome == FilterCommandOutcome::Success);
     SH_CHECK(increasedAgainResult.diskStats.survivingCandidateCount == 1);
@@ -175,12 +180,22 @@ SH_TEST(DiskCandidateScanner_Integration_RealHelperProcess_PlanBeginDiskFilterCh
     SH_CHECK(afterExitResult.outcome == FilterCommandOutcome::DiskFilterFailed);
     SH_CHECK(afterExitResult.diskResult == DiskScanOutcome::ProcessExited);
 
-    // 15: detach -> a subsequent operation reports NotAttached.
+    // 15: detach -> a subsequent operation still fails closed. Note this is
+    // NOT NotAttached: step 14's ProcessExited failure already persisted
+    // manifest.state = Interrupted to disk, and FilterDiskCandidates()
+    // checks manifest.state == CandidatesComplete *before* ever touching
+    // the reader -- so once a session is interrupted, every further filter
+    // attempt is rejected on that stale state alone (CorruptFile) rather
+    // than re-discovering whatever the reader's own current problem is.
+    // That's the correct, defensible behavior (no more generations may be
+    // layered onto an already-interrupted chain without an explicit
+    // Resume() first) -- it just means this assertion cannot observe
+    // NotAttached specifically here.
     restartedReader.Detach();
     reader.Detach();
     FilterCommandResult afterDetachResult = restartedController.Filter(CandidateFilterKind::Increased, nullptr);
     SH_CHECK(afterDetachResult.outcome == FilterCommandOutcome::DiskFilterFailed);
-    SH_CHECK(afterDetachResult.diskResult == DiskScanOutcome::NotAttached);
+    SH_CHECK(afterDetachResult.diskResult == DiskScanOutcome::CorruptFile);
 
     // 16: the failed post-exit/post-detach filter attempts above must never
     // have clobbered the last known-good complete generation file -- verify
@@ -196,5 +211,6 @@ SH_TEST(DiskCandidateScanner_Integration_RealHelperProcess_PlanBeginDiskFilterCh
     SH_CHECK(verifiedAddress == incrementAddr);
     SH_CHECK(!directReader.NextRecord(verifiedAddress, verifiedValueBytes)); // exactly one record
 
+    directReader.Close();
     std::filesystem::remove_all(sessionDir);
 }

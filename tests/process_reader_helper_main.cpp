@@ -82,11 +82,18 @@ alignas(8) unsigned char g_ripRelativeTarget[8] = {'T', 'A', 'R', 'G', 'E', 'T',
 // candidate-scan integration test -- each one exercises exactly one
 // CandidateFilterKind, plus one deliberately unrelated value that keeps
 // changing on its own so a correct filter has something real to exclude.
-alignas(4) volatile std::uint32_t g_watchSentinel = 0xCAFEF00D; // never changes
-alignas(4) volatile std::uint32_t g_watchIncrement = 1000;      // INCREMENT raises this
-alignas(4) volatile std::uint32_t g_watchDecrement = 1000;      // DECREMENT lowers this
-alignas(4) volatile std::uint32_t g_watchToggle = 0;            // TOGGLE flips 0 <-> 1
-alignas(4) volatile std::uint32_t g_watchNoise = 0;             // advances on every command
+// Increment/decrement share a single distinctive starting value (not a
+// common small integer like 1000) so an "exact value" filter over the
+// whole module reliably seeds exactly these two addresses -- a plain
+// 1000 (0x3E8) is common enough to coincidentally also match unrelated
+// compiler-generated code/data elsewhere in a real module, which is
+// exactly what broke this integration test the first time it was run
+// for real (see docs/06-signal-discovery-probe.md).
+alignas(4) volatile std::uint32_t g_watchSentinel = 0xCAFEF00D;  // never changes
+alignas(4) volatile std::uint32_t g_watchIncrement = 0xCAFE1000; // INCREMENT raises this
+alignas(4) volatile std::uint32_t g_watchDecrement = 0xCAFE1000; // DECREMENT lowers this
+alignas(4) volatile std::uint32_t g_watchToggle = 0;             // TOGGLE flips 0 <-> 1
+alignas(4) volatile std::uint32_t g_watchNoise = 0;              // advances on every command
 
 void InitAobBuffer() {
     // Deterministic filler that can never equal any of the pattern's exact

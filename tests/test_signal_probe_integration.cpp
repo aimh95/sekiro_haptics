@@ -88,8 +88,8 @@ SH_TEST(SignalProbe_Integration_RealHelperProcess_ScanFilterAndWatchCapture) {
 
     // 4: change three of the five values via real pipe commands, each
     // synchronized by the helper's "OK" acknowledgement -- no sleep.
-    SH_CHECK(helper.SendCommandAndWaitForAck("INCREMENT")); // watchIncrement 1000 -> 1010, watchNoise 0 -> 1
-    SH_CHECK(helper.SendCommandAndWaitForAck("DECREMENT")); // watchDecrement 1000 -> 990, watchNoise 1 -> 2
+    SH_CHECK(helper.SendCommandAndWaitForAck("INCREMENT")); // watchIncrement 0xCAFE1000 -> 0xCAFE100A, watchNoise 0 -> 1
+    SH_CHECK(helper.SendCommandAndWaitForAck("DECREMENT")); // watchDecrement 0xCAFE1000 -> 0xCAFE0FF6, watchNoise 1 -> 2
     SH_CHECK(helper.SendCommandAndWaitForAck("TOGGLE"));    // watchToggle 0 -> 1, watchNoise 2 -> 3
 
     // 5: "changed" narrows sharply -- the untouched sentinel (and the vast
@@ -126,8 +126,8 @@ SH_TEST(SignalProbe_Integration_RealHelperProcess_ScanFilterAndWatchCapture) {
 
     // 7: "exact", applied to the increased set, fully isolates the
     // expected address -- watchNoise also increased but never equals
-    // 1010, so it (an unrelated survivor) is removed here.
-    CandidateValue exactTarget = std::uint32_t{1010};
+    // 0xCAFE100A, so it (an unrelated survivor) is removed here.
+    CandidateValue exactTarget = std::uint32_t{0xCAFE100A};
     SH_CHECK(FilterCandidates(reader, increased, CandidateFilterKind::ExactValue, &exactTarget) ==
              CandidateFilterResult::Success);
     SH_CHECK(increased.size() == 1);
@@ -141,10 +141,10 @@ SH_TEST(SignalProbe_Integration_RealHelperProcess_ScanFilterAndWatchCapture) {
         DiscoveryWatchWriter writer(watchPath.string());
         SH_CHECK(writer.IsOpen());
         SH_CHECK(writer.WriteSample(100, "candidate/watch_increment", incrementAddr, CandidateValueType::U32,
-                                     CandidateValue{std::uint32_t{1010}}));
+                                     CandidateValue{std::uint32_t{0xCAFE100A}}));
         SH_CHECK(writer.WriteMarker(150, "test_marker"));
         SH_CHECK(writer.WriteSample(200, "candidate/watch_increment", incrementAddr, CandidateValueType::U32,
-                                     CandidateValue{std::uint32_t{1010}}));
+                                     CandidateValue{std::uint32_t{0xCAFE100A}}));
         writer.Close();
     }
 
