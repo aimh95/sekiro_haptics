@@ -54,7 +54,12 @@ add_library(sekiro_haptics STATIC
     # SEK-PROBE-001D Stage B -- HP/Posture raw combat reader, built on
     # Stage A. Same OS-independence.
     src/process/SekiroRawCombatReader.cpp
-    # SEK-PROBE-001D CLI wiring (combat-plan/combat-resolve/combat-status),
+    # SEK-PROBE-001D Stage C -- bounded delta-only capture + offline
+    # correlation analyzer, both OS-independent.
+    src/process/SekiroCombatCaptureSession.cpp
+    src/process/SekiroCombatCaptureAnalyzer.cpp
+    # SEK-PROBE-001D CLI wiring (combat-plan/combat-resolve/combat-status/
+    # combat-capture/combat-mark/combat-stop/combat-analyze/combat-export),
     # same layering as SignalProbeScanController/SignalProbeCommandProcessor.
     src/process/SekiroCombatSessionController.cpp
     src/process/SekiroCombatCommandProcessor.cpp

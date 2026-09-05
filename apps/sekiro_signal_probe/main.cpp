@@ -35,14 +35,43 @@
 //                                    PlayerGameData once (not per sample)
 //   combat-status                -- one HP/Posture snapshot read + validate
 //                                    against the currently resolved address
+//   combat-capture player-game-data [window-size-bytes] [interval-ms]
+//                                 -- starts a bounded, delta-only capture
+//                                    (never the full raw block) around the
+//                                    currently resolved PlayerGameData
+//   combat-mark <label>          -- e.g. normal_block/perfect_deflect/
+//                                    take_damage/death/... (see docs/07-...)
+//   combat-stop                  -- stops the active combat-capture
+//   combat-analyze [window-ms]   -- offline offset/marker correlation over
+//                                    the last capture (not a validated
+//                                    signal -- see SekiroCombatCaptureAnalyzer.hpp)
+//   combat-export                -- reports the capture file path + stats
+//
+// Global hotkeys (work even while the game window has focus -- see
+// RunMarkerHotkeyThread() below) inject the equivalent "combat-mark <label>"
+// command as if typed, for the markers that need to be recorded at the exact
+// moment they happen without alt-tabbing. Plain F1-F11, no modifier -- Sekiro
+// itself uses Ctrl for combat arts, so Ctrl+Alt+F-key combos would fight
+// with real gameplay input:
+//   F1  -> idle                   F7  -> high_posture_no_break
+//   F2  -> guard_only             F8  -> player_posture_break
+//   F3  -> attack_miss            F9  -> target_posture_break
+//   F4  -> normal_block           F10 -> death
+//   F5  -> perfect_deflect        F11 -> respawn
+//   F6  -> take_damage
+// "loading"/"rest" have no hotkey (not time-critical -- type "combat-mark
+// loading"/"combat-mark rest" normally during downtime).
 //
 // plan/begin/begin-disk/filter/resume/status(scan fields)/list are handled
 // by SignalProbeScanController + SignalProbeCommandProcessor (portable,
 // Fake-testable on any OS -- see SignalProbeScanController.hpp).
-// combat-plan/combat-resolve/combat-status are handled by
-// SekiroRawCombatReader + SekiroCombatSessionController +
+// combat-plan/combat-resolve/combat-status/combat-capture/combat-mark/
+// combat-stop/combat-analyze/combat-export are handled by
+// SekiroRawCombatReader + SekiroCombatCaptureSession +
+// SekiroCombatCaptureAnalyzer + SekiroCombatSessionController +
 // SekiroCombatCommandProcessor (same portability -- see
-// SekiroKnownRootResolver.hpp/SekiroRawCombatReader.hpp). This file stays a
+// SekiroKnownRootResolver.hpp/SekiroRawCombatReader.hpp/
+// SekiroCombatCaptureSession.hpp). This file stays a
 // thin Win32 adapter: real process attach, real identity lookup, and
 // stdin/stdout wiring only -- see docs/06-signal-discovery-probe.md.
 
@@ -57,6 +86,9 @@
 #include "sekiro_haptics/process/SignalProbeScanController.hpp"
 #include "sekiro_haptics/process/Win32ProcessReader.hpp"
 
+#include <windows.h>
+
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
@@ -176,6 +208,65 @@ private:
     std::deque<std::string> queue_;
     bool stdinClosed_ = false;
 };
+
+// ---------------------------------------------------------------------
+// Global marker hotkeys: RegisterHotKey() delivers WM_HOTKEY to whichever
+// thread registered it via that thread's message queue, regardless of
+// which window (if any) currently has focus -- this is what lets the user
+// mark a perfect deflect the instant it happens without alt-tabbing out of
+// the game. Runs on its own dedicated thread (RegisterHotKey requires the
+// registering thread to pump messages) and pushes the equivalent
+// "combat-mark <label>" text into the same CommandQueue the stdin reader
+// thread feeds, so marks flow through the exact same, already-timestamped
+// command path -- no separate/duplicated marking logic.
+// ---------------------------------------------------------------------
+struct MarkerHotkey {
+    int id;
+    UINT virtualKey;
+    const char* label;
+};
+
+constexpr MarkerHotkey kMarkerHotkeys[] = {
+    {1, VK_F1, "idle"},
+    {2, VK_F2, "guard_only"},
+    {3, VK_F3, "attack_miss"},
+    {4, VK_F4, "normal_block"},
+    {5, VK_F5, "perfect_deflect"},
+    {6, VK_F6, "take_damage"},
+    {7, VK_F7, "high_posture_no_break"},
+    {8, VK_F8, "player_posture_break"},
+    {9, VK_F9, "target_posture_break"},
+    {10, VK_F10, "death"},
+    {11, VK_F11, "respawn"},
+};
+
+void RunMarkerHotkeyThread(CommandQueue* commandQueue) {
+    std::vector<int> registeredIds;
+    for (const MarkerHotkey& hotkey : kMarkerHotkeys) {
+        if (RegisterHotKey(nullptr, hotkey.id, 0, hotkey.virtualKey)) {
+            registeredIds.push_back(hotkey.id);
+        } else {
+            std::cerr << "[probe] warning: could not register hotkey for \"" << hotkey.label << "\" (F"
+                       << (hotkey.id) << ") -- another app may already be using it.\n";
+        }
+    }
+
+    MSG msg;
+    while (GetMessage(&msg, nullptr, 0, 0) > 0) {
+        if (msg.message == WM_HOTKEY) {
+            for (const MarkerHotkey& hotkey : kMarkerHotkeys) {
+                if (hotkey.id == static_cast<int>(msg.wParam)) {
+                    commandQueue->Push(std::string("combat-mark ") + hotkey.label);
+                    break;
+                }
+            }
+        }
+    }
+
+    for (int id : registeredIds) {
+        UnregisterHotKey(nullptr, id);
+    }
+}
 
 volatile std::sig_atomic_t g_ctrlCRequested = 0;
 
@@ -358,8 +449,9 @@ int main(int argc, char** argv) {
     // full-scan controller above, never touches private-readable memory.
     SekiroRawCombatReader combatReader(reader, reader, MakeGameDataManSpec(mainModule.name),
                                         kPlayerGameDataOffsetFromGameDataMan, MakeKnownGoodSekiroIdentity(), identity);
-    SekiroCombatSessionController combatController(combatReader, reader);
-    SekiroCombatCommandProcessor combatProcessor(combatController);
+    SekiroCombatSessionController combatController(combatReader, reader, reader);
+    std::filesystem::path combatCapturePath = std::filesystem::path(options.outputDir) / "combat_capture.jsonl";
+    SekiroCombatCommandProcessor combatProcessor(combatController, combatCapturePath.string());
 
     std::vector<WatchTarget> watches;
     std::optional<DiscoveryWatchWriter> watchWriter;
@@ -386,6 +478,13 @@ int main(int argc, char** argv) {
     });
     readerThread.detach();
 
+    std::thread hotkeyThread(RunMarkerHotkeyThread, &commandQueue);
+    hotkeyThread.detach();
+    std::cout << "[probe] global marker hotkeys active (work even while the game window has focus):\n";
+    for (const MarkerHotkey& hotkey : kMarkerHotkeys) {
+        std::cout << "  F" << hotkey.id << " -> combat-mark " << hotkey.label << "\n";
+    }
+
     std::cout << "[probe] ready. Type a command (e.g. \"identity\", \"regions\", \"begin u32 main-module\").\n";
 
     bool endedNormally = false;
@@ -407,11 +506,17 @@ int main(int argc, char** argv) {
 
         std::chrono::milliseconds waitTimeout = watches.empty() ? std::chrono::milliseconds(250)
                                                                   : std::chrono::milliseconds(kDefaultSamplingIntervalMs);
+        if (combatController.IsCapturing()) {
+            waitTimeout = std::min(waitTimeout, combatController.CaptureSamplingInterval());
+        }
         std::string command;
         bool gotCommand = commandQueue.WaitPop(command, waitTimeout);
 
         if (!gotCommand) {
-            if (commandQueue.StdinClosed() && watches.empty()) {
+            if (combatController.IsCapturing()) {
+                combatController.CaptureTick(MonotonicNowUs());
+            }
+            if (commandQueue.StdinClosed() && watches.empty() && !combatController.IsCapturing()) {
                 endedNormally = true;
                 endReason = "stdin_closed";
                 break;
@@ -489,7 +594,7 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        SekiroCombatCommandProcessor::ProcessResult combatResult = combatProcessor.Process(command);
+        SekiroCombatCommandProcessor::ProcessResult combatResult = combatProcessor.Process(command, MonotonicNowUs());
         if (combatResult.handled) {
             for (const std::string& line : combatResult.outputLines) {
                 std::cout << line << "\n";

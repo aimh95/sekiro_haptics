@@ -99,10 +99,10 @@ SH_TEST(SekiroCombatCommandProcessor_UnknownVerb_ReturnsUnhandled) {
     SetupModule(inspector);
     FakeProcessReader reader;
     SekiroRawCombatReader rawReader(reader, inspector, MakeGameDataManSpec(), kPlayerGameDataOffset, identity, identity);
-    SekiroCombatSessionController controller(rawReader, inspector);
-    SekiroCombatCommandProcessor processor(controller);
+    SekiroCombatSessionController controller(rawReader, inspector, reader);
+    SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("identity");
+    auto result = processor.Process("identity", 0);
     SH_CHECK(!result.handled);
     SH_CHECK(result.outputLines.empty());
 }
@@ -113,10 +113,10 @@ SH_TEST(SekiroCombatCommandProcessor_CombatPlan_ModuleFound_ReportsBytesAndFullS
     SetupModule(inspector);
     FakeProcessReader reader;
     SekiroRawCombatReader rawReader(reader, inspector, MakeGameDataManSpec(), kPlayerGameDataOffset, identity, identity);
-    SekiroCombatSessionController controller(rawReader, inspector);
-    SekiroCombatCommandProcessor processor(controller);
+    SekiroCombatSessionController controller(rawReader, inspector, reader);
+    SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("combat-plan");
+    auto result = processor.Process("combat-plan", 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "aobScanRangeBytes=" + std::to_string(kModuleSize)));
     SH_CHECK(AnyLineContains(result.outputLines, "fullScanUsed=false"));
@@ -129,10 +129,10 @@ SH_TEST(SekiroCombatCommandProcessor_CombatResolve_Success_ReportsAddressesAndGe
     FakeProcessReader reader;
     SetupValidChain(reader);
     SekiroRawCombatReader rawReader(reader, inspector, MakeGameDataManSpec(), kPlayerGameDataOffset, identity, identity);
-    SekiroCombatSessionController controller(rawReader, inspector);
-    SekiroCombatCommandProcessor processor(controller);
+    SekiroCombatSessionController controller(rawReader, inspector, reader);
+    SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("combat-resolve");
+    auto result = processor.Process("combat-resolve", 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "status=ResolvedUnvalidated"));
     SH_CHECK(AnyLineContains(result.outputLines, "generation=1"));
@@ -145,10 +145,10 @@ SH_TEST(SekiroCombatCommandProcessor_CombatResolve_SignatureNotFound_ReportsStat
     FakeProcessReader reader; // no pattern poked
 
     SekiroRawCombatReader rawReader(reader, inspector, MakeGameDataManSpec(), kPlayerGameDataOffset, identity, identity);
-    SekiroCombatSessionController controller(rawReader, inspector);
-    SekiroCombatCommandProcessor processor(controller);
+    SekiroCombatSessionController controller(rawReader, inspector, reader);
+    SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("combat-resolve");
+    auto result = processor.Process("combat-resolve", 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "status=SignatureNotFound"));
 }
@@ -161,10 +161,10 @@ SH_TEST(SekiroCombatCommandProcessor_CombatStatus_BeforeResolve_ReportsTemporari
     SetupValidChain(reader);
     PokeCombatFields(reader, 500, 999, 50, 100);
     SekiroRawCombatReader rawReader(reader, inspector, MakeGameDataManSpec(), kPlayerGameDataOffset, identity, identity);
-    SekiroCombatSessionController controller(rawReader, inspector);
-    SekiroCombatCommandProcessor processor(controller);
+    SekiroCombatSessionController controller(rawReader, inspector, reader);
+    SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("combat-status");
+    auto result = processor.Process("combat-status", 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "status=TemporarilyUnavailable"));
 }
@@ -177,11 +177,11 @@ SH_TEST(SekiroCombatCommandProcessor_CombatStatus_AfterResolve_ReportsHpAndPostu
     SetupValidChain(reader);
     PokeCombatFields(reader, 500, 999, 50, 100);
     SekiroRawCombatReader rawReader(reader, inspector, MakeGameDataManSpec(), kPlayerGameDataOffset, identity, identity);
-    SekiroCombatSessionController controller(rawReader, inspector);
-    SekiroCombatCommandProcessor processor(controller);
+    SekiroCombatSessionController controller(rawReader, inspector, reader);
+    SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    SH_CHECK(processor.Process("combat-resolve").handled);
-    auto result = processor.Process("combat-status");
+    SH_CHECK(processor.Process("combat-resolve", 0).handled);
+    auto result = processor.Process("combat-status", 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "status=Valid"));
     SH_CHECK(AnyLineContains(result.outputLines, "hp=500/999"));

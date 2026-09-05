@@ -41,6 +41,9 @@ add_executable(sekiro_haptics_tests
     # SEK-PROBE-001D Stage B -- raw combat reader + CLI wiring. Fake-based.
     test_sekiro_raw_combat_reader.cpp
     test_sekiro_combat_command_processor.cpp
+    # SEK-PROBE-001D Stage C -- capture session + offline analyzer.
+    test_sekiro_combat_capture_session.cpp
+    test_sekiro_combat_capture_analyzer.cpp
 )
 target_include_directories(sekiro_haptics_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics)
