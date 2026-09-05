@@ -437,12 +437,16 @@ struct FilterPassResult {
 /// -- never one ReadBytes() call per candidate.
 FilterPassResult RunDenseFirstFilter(IProcessReader& reader, BaselineReader& baselineReader, GenerationWriter& genWriter,
                                       CandidateValueType type, std::size_t valueSize, CandidateFilterKind kind,
-                                      const CandidateValue* exactTarget, DiskScanStats& stats) {
+                                      const CandidateValue* exactTarget, DiskScanStats& stats,
+                                      std::uint64_t totalScopeBytes, std::size_t totalRegions,
+                                      const std::function<void(const DiskScanStats&)>& onProgress) {
     FilterPassResult result;
     std::size_t valuesPerChunk = std::max<std::size_t>(1, kCandidateScanChunkBytes / valueSize);
     std::vector<std::uint8_t> baselineBuf(valuesPerChunk * valueSize);
     std::vector<std::uint8_t> liveBuf(valuesPerChunk * valueSize);
     std::vector<std::uint8_t> singleBuf(valueSize);
+
+    stats.regionsTotal = totalRegions;
 
     ProcessMemoryRegion region;
     std::uint64_t regionValueCount = 0;
@@ -513,6 +517,16 @@ FilterPassResult RunDenseFirstFilter(IProcessReader& reader, BaselineReader& bas
             result.processedCount += got;
             valueIndex += got;
         }
+
+        ++stats.regionsProcessed;
+        stats.processedBytes = result.processedCount * valueSize;
+        stats.coveragePercent =
+            totalScopeBytes > 0 ? (100.0 * static_cast<double>(stats.processedBytes) / static_cast<double>(totalScopeBytes))
+                                 : 100.0;
+        stats.survivingCandidateCount = result.survivorCount;
+        if (onProgress) {
+            onProgress(stats);
+        }
     }
 
     result.outcome = DiskScanOutcome::CompleteCoverage;
@@ -526,7 +540,9 @@ FilterPassResult RunDenseFirstFilter(IProcessReader& reader, BaselineReader& bas
 /// candidate, never worse than the in-memory FilterCandidates().
 FilterPassResult RunSparseGenerationFilter(IProcessReader& reader, GenerationReader& priorReader, GenerationWriter& genWriter,
                                             CandidateValueType type, std::size_t valueSize, CandidateFilterKind kind,
-                                            const CandidateValue* exactTarget, DiskScanStats& stats) {
+                                            const CandidateValue* exactTarget, DiskScanStats& stats,
+                                            std::uint64_t totalCandidateCount,
+                                            const std::function<void(const DiskScanStats&)>& onProgress) {
     FilterPassResult result;
 
     struct PendingRecord {
@@ -596,6 +612,15 @@ FilterPassResult RunSparseGenerationFilter(IProcessReader& reader, GenerationRea
 
         result.processedCount += window.size();
         window.clear();
+
+        stats.processedBytes = result.processedCount * valueSize;
+        stats.survivingCandidateCount = result.survivorCount;
+        stats.coveragePercent = totalCandidateCount > 0
+                                     ? (100.0 * static_cast<double>(result.processedCount) / static_cast<double>(totalCandidateCount))
+                                     : 100.0;
+        if (onProgress) {
+            onProgress(stats);
+        }
     };
 
     std::uint64_t address = 0;
@@ -627,7 +652,8 @@ FilterPassResult RunSparseGenerationFilter(IProcessReader& reader, GenerationRea
 
 DiskScanOutcome FilterDiskCandidates(IProcessReader& reader, const std::filesystem::path& sessionDir,
                                       CandidateFilterKind kind, const CandidateValue* exactTarget,
-                                      std::size_t memoryBudgetBytes, DiskScanStats& outStats) {
+                                      std::size_t memoryBudgetBytes, DiskScanStats& outStats,
+                                      const std::function<void(const DiskScanStats&)>& onProgress) {
     DiskScanStats stats;
     stats.configuredMemoryBudgetBytes = memoryBudgetBytes;
 
@@ -684,7 +710,8 @@ DiskScanOutcome FilterDiskCandidates(IProcessReader& reader, const std::filesyst
             outStats = stats;
             return DiskScanOutcome::CorruptFile;
         }
-        passResult = RunDenseFirstFilter(reader, baselineReader, genWriter, type, valueSize, kind, exactTarget, stats);
+        passResult = RunDenseFirstFilter(reader, baselineReader, genWriter, type, valueSize, kind, exactTarget, stats,
+                                          manifest.totalScopeBytes, manifest.regions.size(), onProgress);
     } else {
         std::filesystem::path priorGenPath = sessionDir / (GenerationFileBaseName(manifest.generation) + ".bin");
         GenerationReader priorReader(priorGenPath);
@@ -693,7 +720,8 @@ DiskScanOutcome FilterDiskCandidates(IProcessReader& reader, const std::filesyst
             outStats = stats;
             return DiskScanOutcome::CorruptFile;
         }
-        passResult = RunSparseGenerationFilter(reader, priorReader, genWriter, type, valueSize, kind, exactTarget, stats);
+        passResult = RunSparseGenerationFilter(reader, priorReader, genWriter, type, valueSize, kind, exactTarget, stats,
+                                                manifest.candidateCount, onProgress);
     }
 
     if (passResult.outcome != DiskScanOutcome::CompleteCoverage) {

@@ -374,7 +374,29 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        SignalProbeCommandProcessor::ProcessResult processorResult = processor.Process(command);
+        // begin-disk/filter can legitimately take minutes against a
+        // multi-gigabyte real process -- without this, the CLI shows
+        // nothing at all until the whole command finishes, which reads as
+        // a hang. Throttled to once per second so it doesn't flood the
+        // terminal; every other verb ignores this callback entirely.
+        std::optional<std::chrono::steady_clock::time_point> lastProgressPrint;
+        auto onProgress = [&](const DiskScanStats& stats) {
+            auto now = std::chrono::steady_clock::now();
+            if (lastProgressPrint.has_value() && now - *lastProgressPrint < std::chrono::seconds(1)) {
+                return;
+            }
+            lastProgressPrint = now;
+            std::cout << "[probe] progress: ";
+            if (stats.regionsTotal > 0) {
+                std::cout << "regions=" << stats.regionsProcessed << "/" << stats.regionsTotal << " ";
+            }
+            std::cout << "coverage=" << std::fixed << std::setprecision(1) << stats.coveragePercent << "% "
+                       << "candidates=" << stats.survivingCandidateCount << " "
+                       << "processedBytes=" << stats.processedBytes << "\n";
+            std::cout.flush();
+        };
+
+        SignalProbeCommandProcessor::ProcessResult processorResult = processor.Process(command, onProgress);
         if (processorResult.handled) {
             for (const std::string& line : processorResult.outputLines) {
                 std::cout << line << "\n";

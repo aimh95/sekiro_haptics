@@ -11,6 +11,7 @@
 
 #include "sekiro_haptics/process/SignalProbeScanController.hpp"
 
+#include <functional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -32,13 +33,17 @@ public:
     /// Parses and executes one command line. Never throws on malformed
     /// input -- an unparseable argument for an owned verb still returns
     /// handled=true, with a usage line explaining what was wrong.
-    ProcessResult Process(const std::string& commandLine);
+    ///
+    /// `onProgress`, if set, is forwarded as-is to the underlying
+    /// controller call for begin-disk/filter (the only two verbs with a
+    /// long-running disk-backed phase); ignored by every other verb.
+    ProcessResult Process(const std::string& commandLine, const std::function<void(const DiskScanStats&)>& onProgress = {});
 
 private:
     ProcessResult HandlePlan(std::istringstream& args);
     ProcessResult HandleBegin(std::istringstream& args);
-    ProcessResult HandleBeginDisk(std::istringstream& args);
-    ProcessResult HandleFilter(std::istringstream& args);
+    ProcessResult HandleBeginDisk(std::istringstream& args, const std::function<void(const DiskScanStats&)>& onProgress);
+    ProcessResult HandleFilter(std::istringstream& args, const std::function<void(const DiskScanStats&)>& onProgress);
     ProcessResult HandleResume();
     ProcessResult HandleStatus();
     ProcessResult HandleList(std::istringstream& args);

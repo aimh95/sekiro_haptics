@@ -83,7 +83,8 @@ std::string FormatCandidateValue(CandidateValueType type, const CandidateValue& 
 SignalProbeCommandProcessor::SignalProbeCommandProcessor(SignalProbeScanController& controller)
     : controller_(controller) {}
 
-SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::Process(const std::string& commandLine) {
+SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::Process(
+    const std::string& commandLine, const std::function<void(const DiskScanStats&)>& onProgress) {
     std::istringstream iss(commandLine);
     std::string verb;
     iss >> verb;
@@ -95,10 +96,10 @@ SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::Process(
         return HandleBegin(iss);
     }
     if (verb == "begin-disk") {
-        return HandleBeginDisk(iss);
+        return HandleBeginDisk(iss, onProgress);
     }
     if (verb == "filter") {
-        return HandleFilter(iss);
+        return HandleFilter(iss, onProgress);
     }
     if (verb == "resume") {
         return HandleResume();
@@ -123,13 +124,23 @@ SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandlePl
     }
 
     PlanCommandResult result = controller_.Plan(type, scope);
-    if (result.outcome != PlanCandidateScanOutcome::Success) {
+    // PlanCandidateScan() always fills in `report` before checking disk
+    // space -- InsufficientDiskSpace is the one failure outcome where the
+    // caller actually needs those numbers (required vs. available) to
+    // decide what to do next, so it gets the full report too, not just the
+    // bare outcome name. Every other failure (NotAttached, ModuleNotFound,
+    // ...) happens before the report is populated, so those stay terse.
+    if (result.outcome != PlanCandidateScanOutcome::Success && result.outcome != PlanCandidateScanOutcome::InsufficientDiskSpace) {
         return {true, {std::string("plan failed: ") + ToString(result.outcome)}};
     }
 
     const ScanPlanReport& report = result.report;
     bool inMemoryFeasible = report.estimatedInMemoryRamBytes <= report.memoryBudgetBytes;
+    bool diskBackedFeasible = result.outcome == PlanCandidateScanOutcome::Success;
     std::vector<std::string> lines;
+    if (!diskBackedFeasible) {
+        lines.push_back(std::string("plan failed: ") + ToString(result.outcome));
+    }
     lines.push_back("scope=" + std::string(ToString(scope)) + " type=" + std::string(ToString(type)));
     lines.push_back("regions=" + std::to_string(report.regionCount));
     lines.push_back(FormatBytesField("scopeBytes", report.totalScopeBytes));
@@ -140,7 +151,7 @@ SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandlePl
     lines.push_back(FormatBytesField("estimatedBaselineFileBytes", report.estimatedBaselineFileBytes));
     lines.push_back(FormatBytesField("estimatedPeakDiskBytes", report.requiredDiskSpaceBytes));
     lines.push_back(FormatBytesField("outputDriveFreeBytes", report.availableDiskSpaceBytes));
-    lines.push_back("diskBackedFeasible=yes (preflight passed)");
+    lines.push_back(std::string("diskBackedFeasible=") + (diskBackedFeasible ? "yes (preflight passed)" : "no (see plan failed reason above)"));
     lines.push_back(std::string("recommendedStorageMode=") + ToString(report.recommendedStorageMode));
     std::ostringstream coverageLine;
     coverageLine << "coverageTargetPercent=" << report.expectedCoveragePercent;
@@ -181,7 +192,8 @@ SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandleBe
     return {true, lines};
 }
 
-SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandleBeginDisk(std::istringstream& args) {
+SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandleBeginDisk(
+    std::istringstream& args, const std::function<void(const DiskScanStats&)>& onProgress) {
     std::string typeText, scopeText;
     args >> typeText >> scopeText;
     CandidateValueType type;
@@ -190,7 +202,7 @@ SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandleBe
         return {true, {"usage: begin-disk <u8|u16|u32|i32|f32> <main-module|private-readable|all-readable>"}};
     }
 
-    BeginDiskCommandResult result = controller_.BeginDisk(type, scope);
+    BeginDiskCommandResult result = controller_.BeginDisk(type, scope, onProgress);
     if (!result.ranScan) {
         return {true, {std::string("preflight failed: ") + ToString(result.planOutcome) +
                         " -- nothing was written to disk"}};
@@ -214,7 +226,8 @@ SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandleBe
     return {true, lines};
 }
 
-SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandleFilter(std::istringstream& args) {
+SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandleFilter(
+    std::istringstream& args, const std::function<void(const DiskScanStats&)>& onProgress) {
     if (controller_.Mode() == ScanMode::None) {
         return {true, {"no active scan -- run \"begin\" or \"begin-disk\" first"}};
     }
@@ -252,7 +265,7 @@ SignalProbeCommandProcessor::ProcessResult SignalProbeCommandProcessor::HandleFi
         return {true, {"usage: filter <changed|unchanged|increased|decreased>", "       filter exact <value>"}};
     }
 
-    FilterCommandResult result = controller_.Filter(kind, exactTarget);
+    FilterCommandResult result = controller_.Filter(kind, exactTarget, onProgress);
 
     if (result.outcome == FilterCommandOutcome::NoActiveScan) {
         return {true, {"no active scan -- run \"begin\" or \"begin-disk\" first"}};

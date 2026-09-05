@@ -144,7 +144,8 @@ BeginCommandResult SignalProbeScanController::Begin(CandidateValueType type, Can
     return result;
 }
 
-BeginDiskCommandResult SignalProbeScanController::BeginDisk(CandidateValueType type, CandidateScanScope scope) {
+BeginDiskCommandResult SignalProbeScanController::BeginDisk(CandidateValueType type, CandidateScanScope scope,
+                                                              const std::function<void(const DiskScanStats&)>& onProgress) {
     BeginDiskCommandResult result;
 
     ScanPlanReport report;
@@ -160,7 +161,7 @@ BeginDiskCommandResult SignalProbeScanController::BeginDisk(CandidateValueType t
 
     DiskScanStats stats;
     DiskScanOutcome outcome = BeginDiskCandidateScan(reader_, inspector_, memoryMap_, scope, type, config_.outputDir,
-                                                      identity, config_.memoryBudgetBytes, stats);
+                                                      identity, config_.memoryBudgetBytes, stats, onProgress);
     result.scanOutcome = outcome;
     result.stats = stats;
     lastDiskStats_ = stats;
@@ -184,7 +185,8 @@ BeginDiskCommandResult SignalProbeScanController::BeginDisk(CandidateValueType t
     return result;
 }
 
-FilterCommandResult SignalProbeScanController::Filter(CandidateFilterKind kind, const CandidateValue* exactTarget) {
+FilterCommandResult SignalProbeScanController::Filter(CandidateFilterKind kind, const CandidateValue* exactTarget,
+                                                        const std::function<void(const DiskScanStats&)>& onProgress) {
     FilterCommandResult result;
 
     if (kind == CandidateFilterKind::ExactValue && exactTarget == nullptr) {
@@ -212,7 +214,7 @@ FilterCommandResult SignalProbeScanController::Filter(CandidateFilterKind kind, 
     // Disk mode.
     DiskScanStats stats;
     DiskScanOutcome diskOutcome =
-        FilterDiskCandidates(reader_, config_.outputDir, kind, exactTarget, config_.memoryBudgetBytes, stats);
+        FilterDiskCandidates(reader_, config_.outputDir, kind, exactTarget, config_.memoryBudgetBytes, stats, onProgress);
     result.diskResult = diskOutcome;
     result.diskStats = stats;
     lastDiskStats_ = stats;

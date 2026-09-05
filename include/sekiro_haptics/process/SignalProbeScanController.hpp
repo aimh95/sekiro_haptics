@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -185,11 +186,18 @@ public:
     /// if that preflight succeeds. Only on DiskScanOutcome::CompleteCoverage
     /// does Mode() switch to Disk (clearing any in-memory session) --
     /// otherwise current state is untouched.
-    BeginDiskCommandResult BeginDisk(CandidateValueType type, CandidateScanScope scope);
+    ///
+    /// `onProgress`, if set, is forwarded as-is to BeginDiskCandidateScan().
+    BeginDiskCommandResult BeginDisk(CandidateValueType type, CandidateScanScope scope,
+                                      const std::function<void(const DiskScanStats&)>& onProgress = {});
 
     /// Dispatches to the in-memory or disk filter depending on Mode().
-    /// `exactTarget` must be non-null iff `kind == ExactValue`.
-    FilterCommandResult Filter(CandidateFilterKind kind, const CandidateValue* exactTarget);
+    /// `exactTarget` must be non-null iff `kind == ExactValue`. `onProgress`,
+    /// if set, is forwarded as-is to FilterDiskCandidates() -- never called
+    /// for the in-memory path (that filter pass has no comparable
+    /// long-running phase to report on).
+    FilterCommandResult Filter(CandidateFilterKind kind, const CandidateValue* exactTarget,
+                                const std::function<void(const DiskScanStats&)>& onProgress = {});
 
     /// Validates config_.outputDir's session against `identity_` (peeking
     /// the manifest's own recorded value type/scope first, since `resume`

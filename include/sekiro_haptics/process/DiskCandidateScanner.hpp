@@ -128,9 +128,14 @@ DiskScanOutcome BeginDiskCandidateScan(IProcessReader& reader, IProcessInspector
 /// Publishes the new generation and advances the manifest only on full
 /// success; any failure leaves the previous complete generation (or
 /// baseline) untouched -- see CandidateStorage.hpp.
+///
+/// `onProgress`, if set, is called periodically (region/byte/candidate
+/// counts only -- never memory content) during the pass, same contract as
+/// BeginDiskCandidateScan()'s `onProgress`.
 DiskScanOutcome FilterDiskCandidates(IProcessReader& reader, const std::filesystem::path& sessionDir,
                                       CandidateFilterKind kind, const CandidateValue* exactTarget,
-                                      std::size_t memoryBudgetBytes, DiskScanStats& outStats);
+                                      std::size_t memoryBudgetBytes, DiskScanStats& outStats,
+                                      const std::function<void(const DiskScanStats&)>& onProgress = {});
 
 /// Validates a session directory's scan-manifest.json against
 /// `currentIdentity` (all 6 identity fields) and `reader.IsAlive()`, and
