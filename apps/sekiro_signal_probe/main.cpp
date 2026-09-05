@@ -27,15 +27,32 @@
 //   stop
 //   quit
 //
+//   combat-plan                 -- SEK-PROBE-001D targeted path: AOB scan
+//                                   range/expected bytes-per-sample, always
+//                                   fullScanUsed=false (never a full
+//                                   private-readable scan)
+//   combat-resolve               -- AOB-scan + resolve GameDataMan ->
+//                                    PlayerGameData once (not per sample)
+//   combat-status                -- one HP/Posture snapshot read + validate
+//                                    against the currently resolved address
+//
 // plan/begin/begin-disk/filter/resume/status(scan fields)/list are handled
 // by SignalProbeScanController + SignalProbeCommandProcessor (portable,
-// Fake-testable on any OS -- see SignalProbeScanController.hpp). This file
-// stays a thin Win32 adapter: real process attach, real identity lookup,
-// and stdin/stdout wiring only -- see docs/06-signal-discovery-probe.md.
+// Fake-testable on any OS -- see SignalProbeScanController.hpp).
+// combat-plan/combat-resolve/combat-status are handled by
+// SekiroRawCombatReader + SekiroCombatSessionController +
+// SekiroCombatCommandProcessor (same portability -- see
+// SekiroKnownRootResolver.hpp/SekiroRawCombatReader.hpp). This file stays a
+// thin Win32 adapter: real process attach, real identity lookup, and
+// stdin/stdout wiring only -- see docs/06-signal-discovery-probe.md.
 
 #include "sekiro_haptics/process/CandidateScanner.hpp"
 #include "sekiro_haptics/process/DiscoverySession.hpp"
 #include "sekiro_haptics/process/ExecutableIdentity.hpp"
+#include "sekiro_haptics/process/SekiroCombatCommandProcessor.hpp"
+#include "sekiro_haptics/process/SekiroCombatSessionController.hpp"
+#include "sekiro_haptics/process/SekiroKnownRootResolver.hpp"
+#include "sekiro_haptics/process/SekiroRawCombatReader.hpp"
 #include "sekiro_haptics/process/SignalProbeCommandProcessor.hpp"
 #include "sekiro_haptics/process/SignalProbeScanController.hpp"
 #include "sekiro_haptics/process/Win32ProcessReader.hpp"
@@ -62,6 +79,53 @@ namespace {
 
 constexpr const char* kToolVersion = "sekiro_signal_probe/0.1 (SEK-PROBE-001A)";
 constexpr std::int64_t kDefaultSamplingIntervalMs = 200;
+
+// ---------------------------------------------------------------------
+// SEK-PROBE-001D: targeted combat-signal reader wiring. The GameDataMan AOB
+// pattern/offsets below are the ticket's own hypothesis, not yet
+// cross-checked against a real attach -- SekiroKnownRootResolver's identity
+// gating (see MakeKnownGoodSekiroIdentity()) refuses to even attempt the
+// scan against any build other than the one this was authored against, so
+// an unrecognized build fails closed (UnsupportedBuild) rather than
+// guessing at an RVA.
+// ---------------------------------------------------------------------
+
+Sha256Digest ParseSha256HexLiteral(const char* hex) {
+    Sha256Digest digest;
+    auto nibble = [](char c) -> int { return (c <= '9') ? (c - '0') : (c - 'a' + 10); };
+    for (std::size_t i = 0; i < 32; ++i) {
+        digest.bytes[i] = static_cast<std::uint8_t>((nibble(hex[i * 2]) << 4) | nibble(hex[i * 2 + 1]));
+    }
+    return digest;
+}
+
+// Fingerprint of the sekiro.exe build this project actually measured live
+// (fileSizeBytes + sha256 -- matches this tool's own "identity" command
+// output), not the ticket's v1.06 RVA hypothesis and not a guess. If the
+// attached process's own identity doesn't match this exactly, every
+// combat-resolve attempt fails closed with UnsupportedBuild and never scans.
+ExecutableIdentity MakeKnownGoodSekiroIdentity() {
+    ExecutableIdentity id;
+    id.fileSizeBytes = 68005144;
+    id.sha256 = ParseSha256HexLiteral("637aca527538c0ec6e1f136c8ed66046e95dfbdbb1f51926e134d9916398b856");
+    return id;
+}
+
+KnownRootSpec MakeGameDataManSpec(const std::string& moduleName) {
+    KnownRootSpec spec;
+    spec.rootId = "GameDataMan";
+    spec.moduleName = moduleName;
+    AobScanResult parseResult =
+        ParseAobPattern("48 8B 05 ?? ?? ?? ?? 32 D2 48 8B 48 08 48 85 C9 74 13 80 B9 BA", spec.pattern);
+    (void)parseResult; // well-formed by construction -- this literal is authored, not user input
+    spec.instructionOffset = 0;
+    spec.displacementOffset = 3;
+    spec.instructionLength = 7;
+    return spec;
+}
+
+// GameDataMan + 0x8 -> PlayerGameData* (the ticket's own hypothesis).
+constexpr std::int64_t kPlayerGameDataOffsetFromGameDataMan = 0x8;
 
 // ---------------------------------------------------------------------
 // A background thread reads stdin lines into this queue so the main loop
@@ -290,6 +354,13 @@ int main(int argc, char** argv) {
     SignalProbeScanController controller(reader, reader, reader, controllerConfig, controllerIdentity);
     SignalProbeCommandProcessor processor(controller);
 
+    // SEK-PROBE-001D: targeted combat-signal reader -- independent of the
+    // full-scan controller above, never touches private-readable memory.
+    SekiroRawCombatReader combatReader(reader, reader, MakeGameDataManSpec(mainModule.name),
+                                        kPlayerGameDataOffsetFromGameDataMan, MakeKnownGoodSekiroIdentity(), identity);
+    SekiroCombatSessionController combatController(combatReader, reader);
+    SekiroCombatCommandProcessor combatProcessor(combatController);
+
     std::vector<WatchTarget> watches;
     std::optional<DiscoveryWatchWriter> watchWriter;
     std::filesystem::path watchPath = std::filesystem::path(options.outputDir) / "watch.jsonl";
@@ -414,6 +485,14 @@ int main(int argc, char** argv) {
                 } else if (snapshot.mode == ScanMode::Disk && snapshot.diskManifest.has_value()) {
                     metadata.selectedScope = snapshot.diskManifest->identity.scope;
                 }
+            }
+            continue;
+        }
+
+        SekiroCombatCommandProcessor::ProcessResult combatResult = combatProcessor.Process(command);
+        if (combatResult.handled) {
+            for (const std::string& line : combatResult.outputLines) {
+                std::cout << line << "\n";
             }
             continue;
         }

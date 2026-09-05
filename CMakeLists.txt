@@ -46,6 +46,18 @@ add_library(sekiro_haptics STATIC
     src/process/SignalProbeScanController.cpp
     src/process/SignalProbeCommandProcessor.cpp
     src/process/DiscoverySession.cpp
+    # SEK-PROBE-001D Stage A -- targeted AOB-anchored root resolver, built
+    # entirely on AobScanner/RipRelative (both unchanged). OS-independent:
+    # only depends on IProcessReader/IProcessInspector/ExecutableIdentity's
+    # plain data types, no Win32 API.
+    src/process/SekiroKnownRootResolver.cpp
+    # SEK-PROBE-001D Stage B -- HP/Posture raw combat reader, built on
+    # Stage A. Same OS-independence.
+    src/process/SekiroRawCombatReader.cpp
+    # SEK-PROBE-001D CLI wiring (combat-plan/combat-resolve/combat-status),
+    # same layering as SignalProbeScanController/SignalProbeCommandProcessor.
+    src/process/SekiroCombatSessionController.cpp
+    src/process/SekiroCombatCommandProcessor.cpp
 )
 target_include_directories(sekiro_haptics PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

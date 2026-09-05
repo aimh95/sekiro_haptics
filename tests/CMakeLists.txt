@@ -36,6 +36,11 @@ add_executable(sekiro_haptics_tests
     # SEK-PROBE-001C-2 -- OS-independent command/state controller wiring
     # the disk-backed scanner into the probe CLI. Same portability as above.
     test_signal_probe_controller.cpp
+    # SEK-PROBE-001D Stage A -- known-root resolver. Fake-based, OS-independent.
+    test_sekiro_known_root_resolver.cpp
+    # SEK-PROBE-001D Stage B -- raw combat reader + CLI wiring. Fake-based.
+    test_sekiro_raw_combat_reader.cpp
+    test_sekiro_combat_command_processor.cpp
 )
 target_include_directories(sekiro_haptics_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics)
