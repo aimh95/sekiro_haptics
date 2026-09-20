@@ -6,3 +6,27 @@ build-wsl/
 # contain a real build's SHA-256/file size and runtime addresses valid
 # only for that one run -- never committed, never used as source data.
 captures/local/
+
+# Out-of-tree build directories used on this machine (MinGW/Ninja).
+build-hw/
+build-deflect/
+
+# Python bytecode from the tools/ and tests/ scripts.
+__pycache__/
+
+# Audio extracted from the game, and everything derived from it.
+# The cue paths stay in config/guard_cues.json -- drop your own copies of
+# these files in place and the app picks them up unchanged. Nothing here is
+# source code, and none of it is ours to redistribute.
+audio/*.mp3
+audio/*.wav
+audio/generated/
+audio/variants/
+# Diagnostic dumps written by --dump-mix / --dump-submit.
+audio/mix/
+
+# Timestamped local backups made while applying an incoming ZIP.
+feedback_update_backups/
+
+# Per-machine agent settings.
+.claude/
