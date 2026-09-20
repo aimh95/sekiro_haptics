@@ -271,7 +271,7 @@ SH_TEST(SekiroRawCombatReader_ReadSnapshot_FieldReadFails_ReturnsReadFailed) {
     SH_CHECK(snapshot.status == CombatSnapshotStatus::ReadFailed);
 }
 
-SH_TEST(SekiroRawCombatReader_ReadSnapshot_UsesExactlyOneContiguousRead) {
+SH_TEST(SekiroRawCombatReader_ReadSnapshot_OneFieldBlockAndFourPointerChecks) {
     ExecutableIdentity identity = MakeIdentity(0x1000, 0xAB);
     FakeProcessInspector inspector;
     SetupModule(inspector);
@@ -287,5 +287,68 @@ SH_TEST(SekiroRawCombatReader_ReadSnapshot_UsesExactlyOneContiguousRead) {
     int callsAfter = reader.ReadCalls();
 
     SH_CHECK(snapshot.status == CombatSnapshotStatus::Valid);
-    SH_CHECK(callsAfter - callsBefore == 1); // one ReadBytes() call covering all four fields
+    SH_CHECK(callsAfter - callsBefore == 5); // One field block, root+child before AND after.
+}
+
+SH_TEST(SekiroRawCombatReader_Refresh_SeesNewChildWhileOldMemoryRemainsReadable) {
+    auto id = MakeIdentity(0x1000, 0xAB);
+    FakeProcessInspector inspector;
+    SetupModule(inspector);
+    FakeProcessReader reader;
+    SetupValidChain(reader);
+    PokeCombatFields(reader, 900, 999, 10, 100);
+    auto combat = MakeReader(reader, inspector, id, id);
+    SH_CHECK(combat.Resolve().generation == 1);
+    const std::uint64_t replacement = kPlayerGameDataAddr + 0x1000;
+    reader.PokeBytes(kGameDataManAddr + 8, &replacement, 8);
+    const std::int32_t fields[] = {200, 999, 0, 0, 0, 0, 0, 20, 100};
+    reader.PokeBytes(replacement + 0x18, fields, sizeof(fields));
+    auto snapshot = combat.ReadSnapshot();
+    SH_CHECK(snapshot.status == CombatSnapshotStatus::Valid);
+    SH_CHECK(snapshot.hp == 200);
+    SH_CHECK(snapshot.generation == 2);
+}
+
+SH_TEST(SekiroRawCombatReader_Refresh_ParentChangeAlsoChangesEpoch) {
+    auto id = MakeIdentity(0x1000, 0xAB);
+    FakeProcessInspector inspector;
+    SetupModule(inspector);
+    FakeProcessReader reader;
+    SetupValidChain(reader);
+    auto combat = MakeReader(reader, inspector, id, id);
+    SH_CHECK(combat.Resolve().generation == 1);
+    const std::uint64_t parent = kGameDataManAddr + 0x1000;
+    const std::uint64_t child = kPlayerGameDataAddr;
+    reader.PokeBytes(kGameDataManPtrSlotAddr, &parent, 8);
+    reader.PokeBytes(parent + 8, &child, 8);
+    SH_CHECK(combat.Refresh().generation == 2);
+    SH_CHECK(combat.Refresh().generation == 2);
+}
+
+SH_TEST(SekiroRawCombatReader_Refresh_RecoveryAtSameAddressStartsNewEpoch) {
+    auto id = MakeIdentity(0x1000, 0xAB);
+    FakeProcessInspector inspector;
+    SetupModule(inspector);
+    FakeProcessReader reader;
+    SetupValidChain(reader);
+    auto combat = MakeReader(reader, inspector, id, id);
+    SH_CHECK(combat.Resolve().generation == 1);
+    reader.FailReadAtCall(reader.ReadCalls());
+    SH_CHECK(combat.Refresh().status == CombatSnapshotStatus::ReadFailed);
+    SH_CHECK(combat.Refresh().generation == 2);
+}
+
+SH_TEST(SekiroRawCombatReader_ReadSnapshot_FailedPostReadCheckDiscardsFields) {
+    auto id = MakeIdentity(0x1000, 0xAB);
+    FakeProcessInspector inspector;
+    SetupModule(inspector);
+    FakeProcessReader reader;
+    SetupValidChain(reader);
+    PokeCombatFields(reader, 900, 999, 10, 100);
+    auto combat = MakeReader(reader, inspector, id, id);
+    combat.Resolve();
+    reader.FailReadAtCall(reader.ReadCalls() + 3); // After the field block was read.
+    auto snapshot = combat.ReadSnapshot();
+    SH_CHECK(snapshot.status == CombatSnapshotStatus::TemporarilyUnavailable);
+    SH_CHECK(snapshot.hp == 0); // The successfully read but untrusted bytes were discarded.
 }

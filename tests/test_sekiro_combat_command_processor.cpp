@@ -102,7 +102,7 @@ SH_TEST(SekiroCombatCommandProcessor_UnknownVerb_ReturnsUnhandled) {
     SekiroCombatSessionController controller(rawReader, inspector, reader);
     SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("identity", 0);
+    auto result = processor.Process("identity", 0, 0);
     SH_CHECK(!result.handled);
     SH_CHECK(result.outputLines.empty());
 }
@@ -116,7 +116,7 @@ SH_TEST(SekiroCombatCommandProcessor_CombatPlan_ModuleFound_ReportsBytesAndFullS
     SekiroCombatSessionController controller(rawReader, inspector, reader);
     SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("combat-plan", 0);
+    auto result = processor.Process("combat-plan", 0, 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "aobScanRangeBytes=" + std::to_string(kModuleSize)));
     SH_CHECK(AnyLineContains(result.outputLines, "fullScanUsed=false"));
@@ -132,7 +132,7 @@ SH_TEST(SekiroCombatCommandProcessor_CombatResolve_Success_ReportsAddressesAndGe
     SekiroCombatSessionController controller(rawReader, inspector, reader);
     SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("combat-resolve", 0);
+    auto result = processor.Process("combat-resolve", 0, 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "status=ResolvedUnvalidated"));
     SH_CHECK(AnyLineContains(result.outputLines, "generation=1"));
@@ -148,7 +148,7 @@ SH_TEST(SekiroCombatCommandProcessor_CombatResolve_SignatureNotFound_ReportsStat
     SekiroCombatSessionController controller(rawReader, inspector, reader);
     SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("combat-resolve", 0);
+    auto result = processor.Process("combat-resolve", 0, 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "status=SignatureNotFound"));
 }
@@ -164,7 +164,7 @@ SH_TEST(SekiroCombatCommandProcessor_CombatStatus_BeforeResolve_ReportsTemporari
     SekiroCombatSessionController controller(rawReader, inspector, reader);
     SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    auto result = processor.Process("combat-status", 0);
+    auto result = processor.Process("combat-status", 0, 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "status=TemporarilyUnavailable"));
 }
@@ -180,10 +180,47 @@ SH_TEST(SekiroCombatCommandProcessor_CombatStatus_AfterResolve_ReportsHpAndPostu
     SekiroCombatSessionController controller(rawReader, inspector, reader);
     SekiroCombatCommandProcessor processor(controller, "test_capture.jsonl");
 
-    SH_CHECK(processor.Process("combat-resolve", 0).handled);
-    auto result = processor.Process("combat-status", 0);
+    SH_CHECK(processor.Process("combat-resolve", 0, 0).handled);
+    auto result = processor.Process("combat-status", 0, 0);
     SH_CHECK(result.handled);
     SH_CHECK(AnyLineContains(result.outputLines, "status=Valid"));
     SH_CHECK(AnyLineContains(result.outputLines, "hp=500/999"));
     SH_CHECK(AnyLineContains(result.outputLines, "posture=50/100"));
+}
+
+SH_TEST(SekiroCombatCommandProcessor_CombatCapture_CustomAddress_Starts) {
+    ExecutableIdentity identity = MakeIdentity(0x1000, 0xAB);
+    FakeProcessInspector inspector;
+    SetupModule(inspector);
+    FakeProcessReader reader;
+    std::uint32_t seed = 0;
+    reader.PokeBytes(kModuleBase + 0x900, &seed, sizeof(seed));
+    SekiroRawCombatReader rawReader(reader, inspector, MakeGameDataManSpec(), kPlayerGameDataOffset, identity, identity);
+    SekiroCombatSessionController controller(rawReader, inspector, reader);
+    auto capturePath = std::filesystem::temp_directory_path() / "sh_combat_command_processor_custom_capture.jsonl";
+    SekiroCombatCommandProcessor processor(controller, capturePath.string());
+
+    std::ostringstream oss;
+    oss << "combat-capture custom-address 0x" << std::hex << (kModuleBase + 0x900) << std::dec << " 64 10";
+    auto result = processor.Process(oss.str(), 0, 0);
+    SH_CHECK(result.handled);
+    SH_CHECK(AnyLineContains(result.outputLines, "result=Started"));
+    SH_CHECK(AnyLineContains(result.outputLines, "scope=CustomAddress"));
+
+    SH_CHECK(processor.Process("combat-stop", 1000, 1000).handled);
+    std::filesystem::remove(capturePath);
+}
+
+SH_TEST(SekiroCombatCommandProcessor_CombatCapture_CustomAddress_InvalidAddress_ReturnsUsage) {
+    ExecutableIdentity identity = MakeIdentity(0x1000, 0xAB);
+    FakeProcessInspector inspector;
+    SetupModule(inspector);
+    FakeProcessReader reader;
+    SekiroRawCombatReader rawReader(reader, inspector, MakeGameDataManSpec(), kPlayerGameDataOffset, identity, identity);
+    SekiroCombatSessionController controller(rawReader, inspector, reader);
+    SekiroCombatCommandProcessor processor(controller, "unused.jsonl");
+
+    auto result = processor.Process("combat-capture custom-address not-a-number", 0, 0);
+    SH_CHECK(result.handled);
+    SH_CHECK(AnyLineContains(result.outputLines, "usage:"));
 }
