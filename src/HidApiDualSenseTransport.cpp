@@ -2,6 +2,13 @@
 
 #include <hidapi.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <hidsdi.h>
+#endif
+
+#include <cstring>
+#include <vector>
 #include <iostream>
 #include <mutex>
 
@@ -71,6 +78,7 @@ std::vector<HidDeviceInfo> HidApiDualSenseTransport::EnumerateCandidates() {
 
     hid_device_info* list = hid_enumerate(kSonyVendorId, kDualSenseUsbProductId);
     for (hid_device_info* cur = list; cur != nullptr; cur = cur->next) {
+        if (cur->bus_type != HID_API_BUS_USB || cur->usage_page != 0x01 || cur->usage != 0x05) continue;
         HidDeviceInfo info;
         info.vendorId = cur->vendor_id;
         info.productId = cur->product_id;
@@ -98,9 +106,19 @@ TransportResult HidApiDualSenseTransport::Open(const std::string& path) {
         return TransportResult::OpenFailed;
     }
 
+    const auto* info = hid_get_device_info(handle);
+    if (!info || info->vendor_id != kSonyVendorId || info->product_id != kDualSenseUsbProductId ||
+        info->bus_type != HID_API_BUS_USB || info->usage_page != 0x01 || info->usage != 0x05) {
+        hid_close(handle);
+        log_ << "[HidApiDualSenseTransport] Expected USB DualSense gamepad interface\n";
+        return TransportResult::OpenFailed;
+    }
+
     device_ = handle;
     openPath_ = path;
+    declaredOutputLength_ = QueryOutputReportLength(path);
     log_ << "[HidApiDualSenseTransport] Open path=" << path
+         << " outputReportLength=" << declaredOutputLength_
          << " result=" << ToString(TransportResult::Success) << '\n';
     return TransportResult::Success;
 }
@@ -114,6 +132,32 @@ void HidApiDualSenseTransport::Close() {
     log_ << "[HidApiDualSenseTransport] Close path=" << openPath_ << '\n';
     device_ = nullptr;
     openPath_.clear();
+    declaredOutputLength_ = 0;
+}
+
+/// Asks the HID stack how long an output report must be for this device. A
+/// write of any other length is rejected, and hid_write() reports that the
+/// same way it reports "someone else owns the device" -- so this has to be
+/// measured, not assumed.
+std::size_t HidApiDualSenseTransport::QueryOutputReportLength(const std::string& path) {
+#ifdef _WIN32
+    const HANDLE file = CreateFileA(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                    nullptr, OPEN_EXISTING, 0, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return 0;
+    std::size_t length = 0;
+    PHIDP_PREPARSED_DATA preparsed = nullptr;
+    if (HidD_GetPreparsedData(file, &preparsed)) {
+        HIDP_CAPS caps{};
+        if (HidP_GetCaps(preparsed, &caps) == HIDP_STATUS_SUCCESS)
+            length = caps.OutputReportByteLength;
+        HidD_FreePreparsedData(preparsed);
+    }
+    CloseHandle(file);
+    return length;
+#else
+    (void)path;
+    return 0;
+#endif
 }
 
 bool HidApiDualSenseTransport::IsOpen() const {
@@ -126,11 +170,38 @@ TransportResult HidApiDualSenseTransport::WriteOutputReport(const std::uint8_t* 
         return TransportResult::NotOpen;
     }
 
-    int written = hid_write(device_, report, length);
-    TransportResult result = written >= 0 ? TransportResult::Success : TransportResult::WriteFailed;
+    // Send exactly what the descriptor declares. The builders in
+    // DualSenseUsbReport.hpp produce a fixed 64-byte buffer, but this
+    // controller declares 48 -- writing the buffer's own size silently failed
+    // every time. Padding is zero, which is "change nothing" for every field.
+    std::vector<std::uint8_t> padded;
+    const std::uint8_t* data = report;
+    std::size_t toWrite = length;
+    if (declaredOutputLength_ != 0 && declaredOutputLength_ != length) {
+        padded.assign(declaredOutputLength_, 0);
+        std::memcpy(padded.data(), report, std::min(length, declaredOutputLength_));
+        data = padded.data();
+        toWrite = declaredOutputLength_;
+    }
 
-    log_ << "[HidApiDualSenseTransport] WriteOutputReport path=" << openPath_ << " bytes=" << length
-         << " result=" << ToString(result) << '\n';
+    int written = hid_write(device_, data, toWrite);
+    TransportResult result = written >= 0 && static_cast<std::size_t>(written) == toWrite
+        ? TransportResult::Success : TransportResult::WriteFailed;
+
+    log_ << "[HidApiDualSenseTransport] WriteOutputReport path=" << openPath_
+         << " requested=" << length << " sent=" << toWrite
+         << " written=" << written << " result=" << ToString(result);
+    if (result != TransportResult::Success) {
+        // Without the backend's own message a failed write is unactionable: a
+        // wrong report length, another process holding the device, and a
+        // permissions problem all look identical from the return value alone.
+        if (const wchar_t* why = hid_error(device_)) {
+            log_ << " error=\"";
+            for (const wchar_t* c = why; *c; ++c) log_ << static_cast<char>(*c < 128 ? *c : '?');
+            log_ << "\"";
+        }
+    }
+    log_ << '\n';
 
     return result;
 }

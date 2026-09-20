@@ -2,6 +2,7 @@
 
 #include "sekiro_haptics/IDualSenseTransport.hpp"
 
+#include <cstddef>
 #include <ostream>
 #include <string>
 
@@ -43,12 +44,24 @@ public:
     bool IsOpen() const override;
     TransportResult WriteOutputReport(const std::uint8_t* report, std::size_t length) override;
 
+    /// What the open device's HID descriptor declares an output report must be,
+    /// or 0 when nothing is open / it could not be read.
+    ///
+    /// This is queried rather than assumed. The controller on the development
+    /// machine declares 48, while this project's report builders produce a
+    /// 64-byte buffer -- writing 64 bytes to it never succeeded, which is why
+    /// no audio-routing report ever reached the device. WriteOutputReport()
+    /// now sends exactly this many bytes.
+    std::size_t DeclaredOutputReportLength() const { return declaredOutputLength_; }
+
 private:
     static std::ostream& DefaultLogStream();
+    static std::size_t QueryOutputReportLength(const std::string& path);
 
     std::ostream& log_;
     hid_device_* device_ = nullptr;
     std::string openPath_;
+    std::size_t declaredOutputLength_ = 0;
 };
 
 } // namespace sekiro_haptics

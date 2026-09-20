@@ -17,6 +17,10 @@ add_library(sekiro_haptics STATIC
     src/HapticScheduler.cpp
     src/IDualSenseTransport.cpp
     src/DualSenseUsbReport.cpp
+    src/ActionFeedback.cpp
+    src/FeedbackOutput.cpp
+    src/ActionScript.cpp
+    src/GuardCue.cpp
     src/Json.cpp
     src/events/ManualLabelEventDetector.cpp
     src/signals/IGameSignalSource.cpp
@@ -63,6 +67,10 @@ add_library(sekiro_haptics STATIC
     # same layering as SignalProbeScanController/SignalProbeCommandProcessor.
     src/process/SekiroCombatSessionController.cpp
     src/process/SekiroCombatCommandProcessor.cpp
+    # Realtime player guard-resolution reader (deflect pulse + outcome byte),
+    # carrying the two liveness/ownership corrections from DEFLECT_STATUS.md 7.8.
+    src/process/SekiroPlayerGuardReader.cpp
+    src/process/SekiroEnemyGuardReader.cpp
 )
 target_include_directories(sekiro_haptics PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -89,6 +97,17 @@ endif()
 # that spawns a real helper process to attach to remain Windows-only --
 # see docs/05-process-access.md.
 if(WIN32)
+    add_library(sekiro_haptics_windows_audio STATIC
+        src/WasapiSpeakerOutput.cpp
+        src/DualSenseAudioDevice.cpp
+        src/AudioClipLoader.cpp)
+    # ksuser carries the KSDATAFORMAT_SUBTYPE_* GUIDs. MSVC pulls them in via
+    # uuid.lib, but MinGW keeps them in a separate import library.
+    # mf/mfplat/mfreadwrite: Media Foundation, already part of Windows -- used to
+    # decode supplied cue recordings without adding a third-party MP3 decoder.
+    target_link_libraries(sekiro_haptics_windows_audio PUBLIC sekiro_haptics
+        PRIVATE ole32 uuid ksuser mf mfplat mfreadwrite mfuuid)
+
     add_library(sekiro_haptics_win32_process STATIC
         src/process/Win32Api.cpp
         src/process/Win32ProcessReader.cpp
@@ -137,7 +156,7 @@ if(SEKIRO_HAPTICS_BUILD_DUALSENSE_TRANSPORT)
     )
     target_link_libraries(sekiro_haptics_dualsense_transport
         PUBLIC sekiro_haptics
-        PRIVATE hidapi::hidapi
+        PRIVATE hidapi::hidapi hid
     )
 
     if(MSVC)
@@ -148,6 +167,11 @@ if(SEKIRO_HAPTICS_BUILD_DUALSENSE_TRANSPORT)
 endif()
 
 if(SEKIRO_HAPTICS_BUILD_APPS)
+    add_subdirectory(apps/action_feedback)
+    if(TARGET sekiro_haptics_dualsense_transport AND TARGET sekiro_haptics_windows_audio
+       AND TARGET sekiro_haptics_win32_process)
+        add_subdirectory(apps/guard_feedback)
+    endif()
     add_subdirectory(apps/console_test)
     add_subdirectory(apps/replay_cli)
     if(TARGET sekiro_haptics_win32_process)
