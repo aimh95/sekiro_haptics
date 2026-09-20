@@ -1,0 +1,22 @@
+{
+  "device": {"audioEndpointIndex": 6, "speakerChannel": 1, "hapticLeftChannel": 2, "hapticRightChannel": 3, "controllerSpeakerVolume": 100, "audioOutputPath": 3, "speakerPreGain": 7, "windowsEndpointVolume": -1},
+  "deflect": {
+    "speaker": {"clipPath": "audio/generated/deflect_hit.wav", "clipPeak": 0.92,"durationMs": 140,"attackMs": 1,"releaseMs": 14,"baseHz": 2350,"strikeNoiseAmplitude": 0.3,"strikeNoiseDecayPerSecond": 220,"strikeNoiseHighpass": 0.75,"gain": 0.45,"trimDb": -18,"highpassHz": 0,"lowpassHz": 0,"tailMs": 320,"tailDecayPerSecond": 4,"tailGrainMs": 18,"partials": [{"ratio": 1, "amplitude": 0.5, "decayPerSecond": 26}, {"ratio": 1.51, "amplitude": 0.34, "decayPerSecond": 34}, {"ratio": 2.13, "amplitude": 0.24, "decayPerSecond": 46}, {"ratio": 2.87, "amplitude": 0.15, "decayPerSecond": 62}, {"ratio": 3.74, "amplitude": 0.09, "decayPerSecond": 84}]},
+    "haptic": {"totalMs": 378,"normalizePeak": 0.85,"noiseAmplitude": 0.1,"gain": 1,"contact": {"startMs": 0, "endMs": 10, "startHz": 260, "endHz": 220, "riseMs": 0.7, "holdMs": 0, "weight": 0.9, "decayPerSecond": 170}, "body": {"startMs": 4, "endMs": 75, "startHz": 190, "endHz": 190, "riseMs": 3, "holdMs": 22, "weight": 1, "decayPerSecond": 26}, "ring": {"startMs": 40, "endMs": 378, "startHz": 250, "endHz": 250, "riseMs": 5, "holdMs": 10, "weight": 0.2, "decayPerSecond": 9}},
+    "balance": 0
+  },
+  "block": {
+    "speaker": {"clipPath": "audio/generated/block_hit.wav", "clipPeak": 0.92,"durationMs": 95,"attackMs": 4,"releaseMs": 18,"baseHz": 1250,"strikeNoiseAmplitude": 0.22,"strikeNoiseDecayPerSecond": 120,"strikeNoiseHighpass": 0.3,"gain": 0.45,"trimDb": -18,"highpassHz": 0,"lowpassHz": 0,"tailMs": 420,"tailDecayPerSecond": 3.2,"tailGrainMs": 18,"partials": [{"ratio": 1, "amplitude": 0.52, "decayPerSecond": 34}, {"ratio": 1.41, "amplitude": 0.3, "decayPerSecond": 44}, {"ratio": 2.06, "amplitude": 0.14, "decayPerSecond": 70}, {"ratio": 2.94, "amplitude": 0.05, "decayPerSecond": 110}]},
+    "haptic": {"totalMs": 500,"normalizePeak": 0.85,"noiseAmplitude": 0.06,"gain": 1,"contact": {"startMs": 0, "endMs": 14, "startHz": 180, "endHz": 180, "riseMs": 1.6, "holdMs": 0, "weight": 0.8, "decayPerSecond": 130}, "body": {"startMs": 4, "endMs": 100, "startHz": 145, "endHz": 145, "riseMs": 4, "holdMs": 28, "weight": 1, "decayPerSecond": 18}, "ring": {"startMs": 55, "endMs": 500, "startHz": 210, "endHz": 210, "riseMs": 6, "holdMs": 12, "weight": 0.2, "decayPerSecond": 7}},
+    "balance": 0
+  },
+  "speakerVolume": 1,
+  "hapticStrength": 1,
+  "retriggerDuck": 1,
+  "retireFadeMs": 25,
+  "limiterThreshold": 0.95,
+  "speakerHeadroom": 0.85,
+  "hapticHeadroom": 1,
+  "maxOutputLatencyUs": 120000,
+  "voiceLimit": 36
+}
