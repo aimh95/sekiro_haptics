@@ -1,0 +1,4 @@
+source: E:\sekiro_scan\occ-01.jsonl (local only, not committed)
+sha256: b18215bedadaaae7c6b4674c625bc28261847b21bcabd91b3cfc7324a154be72
+bytes: 72479005
+excerpt range: 189000000us..196500000us (phase p5: deflect,deflect,block,block,block)

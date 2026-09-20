@@ -1,0 +1,43 @@
+{
+ "scope": "PlayerModuleSet",
+ "windowSizeBytes": 10240,
+ "resultFlagWindowOffset": 3600,
+ "modules": [
+  {
+   "name": "SprjChrActionFlagModule",
+   "vftableRva": "0x2a72158",
+   "windowOffset": 0,
+   "sizeBytes": 4096
+  },
+  {
+   "name": "SprjPlayerDamageModule",
+   "vftableRva": "0x2a7da48",
+   "windowOffset": 4096,
+   "sizeBytes": 2048
+  },
+  {
+   "name": "SprjPlayerHitStopModule",
+   "vftableRva": "0x2a83598",
+   "windowOffset": 6144,
+   "sizeBytes": 1024
+  },
+  {
+   "name": "CSChrToughnessModule",
+   "vftableRva": "0x2a8f2d8",
+   "windowOffset": 7168,
+   "sizeBytes": 1024
+  },
+  {
+   "name": "SprjChrActionRequestModule",
+   "vftableRva": "0x2a729d8",
+   "windowOffset": 8192,
+   "sizeBytes": 1024
+  },
+  {
+   "name": "SprjChrBehaviorModule",
+   "vftableRva": "0x2a790a8",
+   "windowOffset": 9216,
+   "sizeBytes": 1024
+  }
+ ]
+}

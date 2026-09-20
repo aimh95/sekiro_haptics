@@ -1,0 +1,13 @@
+# chain: [exe+0x3d7a1e0] -> +0x88 -> +0x10b8 -> +0x1d0 -> +0xe10
+# re-resolved every tick; vptr re-validated against SprjChrActionFlagModule
+[   0.000] OBJECT = 0x7ff4a5979470 (최초 확인)
+[ 121.248] RESOLVE FAIL: hop 0 (+0x88) null
+[ 121.989] RESOLVE FAIL: WorldChrMan null
+[ 122.668] RESOLVE FAIL: hop 0 (+0x88) null
+[ 125.696] OBJECT = 0x7ff4a900b470 (교체됨)
+[ 158.833] RESOLVE FAIL: hop 0 (+0x88) null
+[ 158.925] RESOLVE FAIL: WorldChrMan null
+[ 159.049] RESOLVE FAIL: hop 0 (+0x88) null
+[ 160.192] OBJECT = 0x7ff4a7243cd0 (교체됨)
+[ 182.558] FLAG 0 -> 1   (패링 성공)
+[ 201.597] FLAG 1 -> 0   (일반 방어)

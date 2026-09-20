@@ -1,0 +1,7 @@
+SprjPlayerDamageModule     vft RVA 0x2a7da48    methods=23  first6=0xb72e30, 0xb70e50, 0xb70ea0, 0xb719a0, 0xb71d80, 0xb71ba0
+SprjEnemyDamageModule      vft RVA 0x2a7d628    methods=23  first6=0xb70d20, 0xb6ffb0, 0xb63d10, 0xb702b0, 0xb68a40, 0xb68a10
+SprjChrDamageModule        vft RVA 0x2a7cd70    methods=23  first6=0xb6fbf0, 0xb63cd0, 0xb63d10, 0xb68680, 0xb68a40, 0xb68a10
+SprjChrActionFlagModule    vft RVA 0x2a72158    methods=2  first6=0xb2a650, 0xb27bc0
+CSChrToughnessModule       vft RVA 0x2a8f2d8    methods=2  first6=0xbe55e0, 0xbe4970
+SprjChrBehaviorModule      vft RVA 0x2a790a8    methods=2  first6=0xb4c750, 0xb3f460
+SprjPlayerHitStopModule    vft RVA 0x2a83598    methods=2  first6=0xb9e1f0, 0xb9dfa0

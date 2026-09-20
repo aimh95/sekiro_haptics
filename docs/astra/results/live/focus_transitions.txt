@@ -1,0 +1,5 @@
+# FOCUS 0x7ff4a597a280 (SprjChrActionFlagModule +0xE10)
+[   8.471] 0x7ff4a597a280 0 -> 1  <<< FOCUS
+[  15.448] 0x7ff4a597a280 1 -> 0  <<< FOCUS
+[  24.382] 0x7ff4a597a280 0 -> 1  <<< FOCUS
+[  36.416] 0x7ff4a597a280 1 -> 0  <<< FOCUS

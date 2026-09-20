@@ -1,0 +1,135 @@
+{
+  "SprjPlayerDamageModule": {
+    "vftableRva": "0x2a7da48",
+    "colRva": "0x33189b0",
+    "typeDescriptorRva": "0x3c7f138",
+    "methodCount": 23,
+    "methodRvas": [
+      "0xb72e30",
+      "0xb70e50",
+      "0xb70ea0",
+      "0xb719a0",
+      "0xb71d80",
+      "0xb71ba0",
+      "0xb710b0",
+      "0xb657f0",
+      "0xb70ee0",
+      "0xb729e0",
+      "0xb72cc0",
+      "0xb72810",
+      "0xb69350",
+      "0xb71ef0",
+      "0xb718f0",
+      "0xb71950",
+      "0xb6a8c0",
+      "0xb68670",
+      "0xb63d20",
+      "0xb71e60",
+      "0xb71e90",
+      "0xb71ec0",
+      "0xb671e0"
+    ]
+  },
+  "SprjEnemyDamageModule": {
+    "vftableRva": "0x2a7d628",
+    "colRva": "0x33188a0",
+    "typeDescriptorRva": "0x3c7f0a8",
+    "methodCount": 23,
+    "methodRvas": [
+      "0xb70d20",
+      "0xb6ffb0",
+      "0xb63d10",
+      "0xb702b0",
+      "0xb68a40",
+      "0xb68a10",
+      "0xb700c0",
+      "0xb70140",
+      "0xb65780",
+      "0xb6a040",
+      "0xb6bd30",
+      "0xb698d0",
+      "0xb69350",
+      "0xb70470",
+      "0xb67fb0",
+      "0xb680b0",
+      "0xb70c10",
+      "0xb702a0",
+      "0xb70000",
+      "0xb703b0",
+      "0xb70450",
+      "0xb70460",
+      "0xb671e0"
+    ]
+  },
+  "SprjChrDamageModule": {
+    "vftableRva": "0x2a7cd70",
+    "colRva": "0x3318698",
+    "typeDescriptorRva": "0x3c7ee78",
+    "methodCount": 23,
+    "methodRvas": [
+      "0xb6fbf0",
+      "0xb63cd0",
+      "0xb63d10",
+      "0xb68680",
+      "0xb68a40",
+      "0xb68a10",
+      "0xb657e0",
+      "0xb657f0",
+      "0xb65780",
+      "0xb6a040",
+      "0xb6bd30",
+      "0xb698d0",
+      "0xb69350",
+      "0xb68cf0",
+      "0xb67fb0",
+      "0xb680b0",
+      "0xb6a8c0",
+      "0xb68670",
+      "0xb63d20",
+      "0xb68cc0",
+      "0xb68cd0",
+      "0xb68ce0",
+      "0xb671e0"
+    ]
+  },
+  "SprjChrActionFlagModule": {
+    "vftableRva": "0x2a72158",
+    "colRva": "0x3316b10",
+    "typeDescriptorRva": "0x3c7d358",
+    "methodCount": 2,
+    "methodRvas": [
+      "0xb2a650",
+      "0xb27bc0"
+    ]
+  },
+  "CSChrToughnessModule": {
+    "vftableRva": "0x2a8f2d8",
+    "colRva": "0x331d280",
+    "typeDescriptorRva": "0x3c82a88",
+    "methodCount": 2,
+    "methodRvas": [
+      "0xbe55e0",
+      "0xbe4970"
+    ]
+  },
+  "SprjChrBehaviorModule": {
+    "vftableRva": "0x2a790a8",
+    "colRva": "0x3317608",
+    "typeDescriptorRva": "0x3c7de18",
+    "methodCount": 2,
+    "methodRvas": [
+      "0xb4c750",
+      "0xb3f460"
+    ]
+  },
+  "SprjPlayerHitStopModule": {
+    "vftableRva": "0x2a83598",
+    "colRva": "0x331a028",
+    "typeDescriptorRva": "0x3c80218",
+    "methodCount": 2,
+    "methodRvas": [
+      "0xb9e1f0",
+      "0xb9dfa0"
+    ]
+  }
+}

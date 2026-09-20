@@ -64,7 +64,7 @@ when that arrives.
 
 ## Access rights requested
 
-Exactly `PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ`
+Exactly `PROCESS_QUERY_INFORMATION | PROCESS_VM_READ`
 (`sekiro_haptics::process::kProcessAccessMask`,
 `include/sekiro_haptics/process/IProcessReader.hpp`). Nothing else is ever
 requested from `OpenProcess`. `src/process/Win32ProcessReader.cpp`
@@ -90,9 +90,10 @@ was dropped for this project) -- it's about game stability and save-data
 safety. A tool that only ever reads never has a way to corrupt the target
 process's state, no matter how buggy it is.
 
-`IProcessInspector`'s path/module queries need no additional access
-rights: `QueryFullProcessImageNameW` works with the
-`PROCESS_QUERY_LIMITED_INFORMATION` already in `kProcessAccessMask`, and
+`VirtualQueryEx` requires `PROCESS_QUERY_INFORMATION`; limited query rights
+alone do not satisfy that API. `IProcessInspector`'s path/module queries
+need no additional access rights: `QueryFullProcessImageNameW` also works
+with `PROCESS_QUERY_INFORMATION` in `kProcessAccessMask`, and
 module enumeration uses a `CreateToolhelp32Snapshot` snapshot (a separate
 OS mechanism, not an extra access right on the target process's handle).
 `ExecutableIdentity`'s SHA-256 hashing uses Windows' own CNG API

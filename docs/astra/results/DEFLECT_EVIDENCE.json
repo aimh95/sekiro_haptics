@@ -1,0 +1,808 @@
+{
+  "schemaVersion": 1,
+  "generatedUtc": "2026-09-12",
+  "summary": {
+    "codeAndSyntheticTestsPassed": true,
+    "staticAnalysisCandidateFound": "confirmed",
+    "liveGameObservation": true,
+    "heldOutSessionValidation": true,
+    "note": "Synthetic fixture pass rates are tool verification only and are NOT game detection rates.",
+    "consecutiveOccurrenceRecognition": "achieved; held-out validated; object-replacement validated",
+    "objectReplacementContinuity": "verified with the fixed locator (occ-05)"
+  },
+  "repository": {
+    "path": "C:\\workspace\\sekiro_haptics",
+    "branch": "feature/sekiro-probe-disk-backed",
+    "headCommit": "e80de4065a48fb961d186192355a72515877e24b",
+    "workingTreeDirty": true,
+    "updateApplied": {
+      "package": "docs/astra/SekiroHaptics_Feedback_Implementation.zip",
+      "tool": "update/apply_update.py",
+      "preflight": "48 files to update, 0 already current, 0 conflicts",
+      "applied": 48,
+      "backupDir": "feedback_update_backups/20260912T010132Z-ag4a3716",
+      "hashGateBypassed": false
+    },
+    "additionalLocalFixes": [
+      {
+        "file": "apps/sekiro_signal_probe/main.cpp",
+        "reason": "libstdc++ on MinGW exposes std::jthread::native_handle_type as a winpthreads pthread_t, not a HANDLE; added Win32ThreadHandle() (MSVC path unchanged)",
+        "behaviourChange": false
+      },
+      {
+        "file": "CMakeLists.txt",
+        "reason": "MinGW keeps the KSDATAFORMAT_SUBTYPE_* GUIDs in libksuser.a; linked ksuser to sekiro_haptics_windows_audio",
+        "behaviourChange": false
+      }
+    ]
+  },
+  "build": {
+    "ranOnWindows": true,
+    "toolchain": "MinGW-W64 x86_64-ucrt-posix-seh g++ 16.1.0 (WinLibs) + Ninja + CMake 4.4.1",
+    "msvcAvailable": false,
+    "configureCommand": "cmake -S . -B build-deflect -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=<winlibs g++> -DSEKIRO_HAPTICS_BUILD_DUALSENSE_TRANSPORT=OFF",
+    "buildCommand": "cmake --build build-deflect",
+    "result": "success (115/115 targets)",
+    "dualsenseTransport": "OFF"
+  },
+  "tests": {
+    "command": "ctest --test-dir build-deflect --output-on-failure --timeout 300",
+    "result": "100% tests passed out of 3",
+    "cppUnitTests": {
+      "name": "sekiro_haptics_unit_tests",
+      "passed": 625,
+      "total": 625
+    },
+    "captureV3Decoder": {
+      "name": "capture_v3_decoder",
+      "passed": 11,
+      "total": 11,
+      "kind": "synthetic"
+    },
+    "deflectSignalAnalysis": {
+      "name": "deflect_signal_analysis",
+      "passed": 22,
+      "total": 22,
+      "kind": "synthetic"
+    },
+    "failuresInvestigated": [
+      {
+        "symptom": "test executable aborted with 0xC0000139 STATUS_ENTRYPOINT_NOT_FOUND; ctest hung",
+        "classification": "environment",
+        "cause": "a stale libwinpthread-1.dll from E:\\Users\\aimh9\\anaconda3\\Library\\mingw-w64\\bin resolved first on PATH",
+        "fix": "staged the matching libstdc++-6.dll / libgcc_s_seh-1.dll / libwinpthread-1.dll beside the executables"
+      },
+      {
+        "symptom": "SignalProbe_Integration_RealHelperProcess_ScanFilterAndWatchCapture: decreased.size() == 1 failed",
+        "classification": "build configuration (not a source bug, not a flake)",
+        "cause": "a temporary -static link pulled the static CRT mutable data into the helper main module, adding another decreasing u32",
+        "evidence": "dynamic link: 3/3 runs passed 625/625; -static: 4/4 runs failed",
+        "fix": "removed -static"
+      }
+    ],
+    "syntheticVsLive": "All passing tests above are synthetic. No live-game detection rate was measured."
+  },
+  "gameBinary": {
+    "path": "E:\\Program Files\\Steam\\steamapps\\common\\Sekiro\\sekiro.exe",
+    "sha256": "637aca527538c0ec6e1f136c8ed66046e95dfbdbb1f51926e134d9916398b856",
+    "fileSizeBytes": 68005144,
+    "fileVersion": "1.6.0.0",
+    "steamAppId": 814380,
+    "steamBuildId": "5794815",
+    "modsInstalled": [],
+    "modDetection": "no dinput8.dll / ModEngine / loader DLLs present in the install directory",
+    "handling": "read-only; never uploaded, never modified, never unpacked",
+    "matchesRepoIdentityGate": true,
+    "identityGateSource": "apps/sekiro_signal_probe/main.cpp:166-169 MakeKnownGoodSekiroIdentity()"
+  },
+  "staticAnalysis": {
+    "toolsUsed": [
+      "python-lief",
+      "numpy",
+      "GNU objdump/strings (binutils)",
+      "custom scripts in docs/astra/results/static/"
+    ],
+    "toolsUnavailable": [
+      "Ghidra",
+      "IDA",
+      "radare2/rizin",
+      "capstone",
+      "pefile"
+    ],
+    "imageBase": "0x140000000",
+    "blockingFinding": {
+      "id": "TEXT_SECTION_ENCRYPTED",
+      "statement": "The on-disk .text section is encrypted by the Steam DRM wrapper, so code-level static analysis of the shipped EXE is impossible.",
+      "evidence": {
+        "entryPointRva": "0x429f310",
+        "entryPointSection": ".bind (SteamStub wrapper)",
+        "textEntropyBits": 8.0,
+        "rdataEntropyBits": 4.309,
+        "dataEntropyBits": 3.707,
+        "leaRipPatternCountInText": 20,
+        "leaRipPatternCountExpected": "hundreds of thousands for 43MB of real x86-64 code"
+      },
+      "consequence": "No function branch could be traced and no field offset could be derived from the file. The remaining lawful route is read-only observation of the running process, where .text is decrypted.",
+      "notAttempted": "unpacking or decrypting the EXE (would modify game files; out of scope)"
+    },
+    "confirmed": [
+      {
+        "kind": "string",
+        "va": "0x142a725b0",
+        "section": ".rdata",
+        "encoding": "utf-16le",
+        "text": "IsSucceededJustGuard|(前回のガード時に)ジャスガ成功したか[%s]",
+        "meaning": "boolean: at the previous guard, did Just Guard (deflect) succeed",
+        "codeXrefs": 0,
+        "codeXrefsNote": "no rip-relative or absolute reference found (text is encrypted)"
+      },
+      {
+        "kind": "string",
+        "va": "0x142a72588",
+        "section": ".rdata",
+        "encoding": "utf-16le",
+        "text": "IsGuard|ガード中か[%s]",
+        "meaning": "boolean: currently guarding"
+      },
+      {
+        "kind": "string",
+        "va": "0x142a30db0",
+        "section": ".rdata",
+        "encoding": "utf-16le",
+        "text": "Force Just Guard Mode｜強制ジャストガードする【%s】",
+        "meaning": "debug toggle that forces just-guard"
+      },
+      {
+        "kind": "string",
+        "va": "0x1429cce48",
+        "section": ".rdata",
+        "encoding": "utf-16le",
+        "text": "体幹|Taikan: %d",
+        "meaning": "posture is internally named Toughness / Taikan"
+      },
+      {
+        "kind": "ezstate_command_table",
+        "tableSection": ".data",
+        "entryFormat": "{utf16 name pointer (8 bytes), command id (8 bytes)}",
+        "entries": [
+          {
+            "namePtrStoredAtVa": "0x143b08a58",
+            "nameVa": "0x142a74f28",
+            "name": "ガード弾き挙動取得",
+            "id": "0xBF1",
+            "meaning": "get repel behaviour for a NORMAL guard"
+          },
+          {
+            "namePtrStoredAtVa": "0x143b08a68",
+            "nameVa": "0x142a74f40",
+            "name": "ジャストガード弾き挙動取得",
+            "id": "0xBF2",
+            "meaning": "get repel behaviour for a JUST GUARD (deflect)"
+          },
+          {
+            "namePtrStoredAtVa": "0x143b08818",
+            "nameVa": "0x142a76468",
+            "name": "ガード弾かれ挙動取得",
+            "id": "0xBCB",
+            "meaning": "get repelled behaviour for a NORMAL guard"
+          },
+          {
+            "namePtrStoredAtVa": "0x143b08828",
+            "nameVa": "0x142a76480",
+            "name": "ジャストガード弾かれ挙動取得",
+            "id": "0xBCC",
+            "meaning": "get repelled behaviour for a JUST GUARD"
+          }
+        ],
+        "conclusion": "normal guard and just guard resolve to different script commands, so the player reaction animation differs between the two outcomes"
+      },
+      {
+        "kind": "rtti_type",
+        "name": "HitEffectSeJustGuardParam",
+        "typeDescriptorVa": "0x143ceee38",
+        "paramNameStringVa": "0x142b99f38",
+        "conclusion": "hit-effect sound params have a dedicated JustGuard variant separate from HitEffectSeParam"
+      },
+      {
+        "kind": "rtti_type",
+        "name": "HitEffectSfxConceptJustGuardParam",
+        "typeDescriptorVa": "0x143ceee70",
+        "paramNameStringVa": "0x142b99ea0"
+      }
+    ],
+    "vftables": {
+      "note": "derived from plaintext MSVC RTTI (TypeDescriptor -> CompleteObjectLocator -> vftable). RVAs are relative to the module base; add the runtime ASLR base to compare against a live vptr.",
+      "extractionScripts": [
+        "docs/astra/results/static/xref.py",
+        "docs/astra/results/static/rtti.py",
+        "docs/astra/results/static/dump_vft.py"
+      ],
+      "fullDump": "docs/astra/results/static/vftables.json",
+      "classes": {
+        "SprjPlayerDamageModule": {
+          "vftableRva": "0x2a7da48",
+          "methodCount": 23,
+          "slot0Rva": "0xb72e30"
+        },
+        "SprjEnemyDamageModule": {
+          "vftableRva": "0x2a7d628",
+          "methodCount": 23,
+          "slot0Rva": "0xb70d20"
+        },
+        "SprjChrDamageModule": {
+          "vftableRva": "0x2a7cd70",
+          "methodCount": 23,
+          "slot0Rva": "0xb6fbf0"
+        },
+        "SprjChrActionFlagModule": {
+          "vftableRva": "0x2a72158",
+          "methodCount": 2,
+          "slot0Rva": "0xb2a650"
+        },
+        "CSChrToughnessModule": {
+          "vftableRva": "0x2a8f2d8",
+          "methodCount": 2,
+          "slot0Rva": "0xbe55e0"
+        },
+        "SprjChrBehaviorModule": {
+          "vftableRva": "0x2a790a8",
+          "methodCount": 2,
+          "slot0Rva": "0xb4c750"
+        },
+        "SprjPlayerHitStopModule": {
+          "vftableRva": "0x2a83598",
+          "methodCount": 2,
+          "slot0Rva": "0xb9e1f0"
+        }
+      },
+      "useForPlayerOwnership": "SprjPlayerDamageModule and SprjEnemyDamageModule are distinct concrete types with distinct vftables, so comparing a candidate object's first qword against moduleBase+0x2a7da48 proves player ownership at type level."
+    },
+    "unknown": {
+      "isSucceededJustGuardOwningObject": "unknown",
+      "isSucceededJustGuardFieldOffset": "unknown",
+      "pointerPathFromWorldChrManToThatModule": "unknown",
+      "valueLifetime": "unknown (the string wording implies it persists until the next guard, but this was NOT observed)",
+      "consecutiveOccurrenceDiscriminator": "unknown - no occurrence counter or event id was found; a bool would likely miss back-to-back deflects (the known FN pattern)",
+      "actionFlagModuleOwnershipOfTheFlag": "inferred only, from string-literal translation-unit placement between 0x142a71f00 and 0x142a726a8; NOT confirmed"
+    },
+    "refuted": [
+      {
+        "candidate": "ASCII string 'Deflect' (6 occurrences)",
+        "verdict": "unrelated",
+        "reason": "all are Havok physics symbols (hknpDeflectedLinearCast*)"
+      },
+      {
+        "candidate": "SprjGoalParry / SprjGoalGuardBreakAttackBase",
+        "verdict": "not a player success event",
+        "reason": "SprjGoal* are enemy AI goal classes; enemy-deflects-my-attack is explicitly not the target event"
+      },
+      {
+        "candidate": "a field literally named Repel or PerfectDeflect",
+        "verdict": "does not exist",
+        "reason": "0 occurrences of Repel and PerfectDeflect anywhere in the image"
+      },
+      {
+        "candidate": "GameDataMan -> PlayerGameData HP/posture region",
+        "verdict": "wrong region for this signal",
+        "reason": "posture is owned by CSChrToughnessModule on the ChrIns module chain, not PlayerGameData; PlayerGameData is save/stat data. Readability of those numbers is not semantic validation of a deflect."
+      }
+    ]
+  },
+  "liveObservation": {
+    "performed": true,
+    "date": "2026-09-18",
+    "pid": 10132,
+    "moduleBase": "0x140000000",
+    "exeSha256": "637aca527538c0ec6e1f136c8ed66046e95dfbdbb1f51926e134d9916398b856",
+    "readOnly": true,
+    "confirmedSignal": {
+      "class": "SprjChrActionFlagModule",
+      "classVftableRva": "0x2a72158",
+      "fieldOffset": "0xE10",
+      "fieldOffsetDecimal": 3600,
+      "type": "u8 (bool)",
+      "semantics": {
+        "0": "normal block",
+        "1": "Just Guard (deflect) succeeded"
+      },
+      "lifetime": "holds until the next guard resolves",
+      "sessionAbsoluteAddress": "0x7ff4a597a280",
+      "sessionObjectAddress": "0x7ff4a5979470",
+      "absoluteAddressCaveat": "ASLR/session specific; invalid after restart"
+    },
+    "discoveryFunnel": [
+      {
+        "pass": "begin-disk",
+        "action": "baseline after a normal block",
+        "filter": "u8 private-readable",
+        "candidates": 7565840384
+      },
+      {
+        "pass": 1,
+        "action": "deflect",
+        "filter": "increased",
+        "candidates": 18197537
+      },
+      {
+        "pass": 2,
+        "action": "normal block",
+        "filter": "decreased",
+        "candidates": 11623684
+      },
+      {
+        "pass": 3,
+        "action": "idle",
+        "filter": "unchanged",
+        "candidates": 6571326
+      },
+      {
+        "pass": 4,
+        "action": "deflect",
+        "filter": "exact 1",
+        "candidates": 90413
+      },
+      {
+        "pass": "5-8",
+        "action": "alternating",
+        "filter": "exact 0 / exact 1",
+        "candidates": 1748
+      },
+      {
+        "pass": "9-12",
+        "action": "alternating",
+        "filter": "exact 0 / exact 1",
+        "candidates": 176
+      }
+    ],
+    "funnelNote": "Direction filters only halved the set per pass; absolute-value filters (exact) were what made it converge.",
+    "vptrDiscrimination": {
+      "candidates": 176,
+      "noVftableWithin32KiB": 173,
+      "insideAnObject": 3,
+      "matchingAKnownClass": 1,
+      "method": "walk backwards from each candidate for the nearest qword pointing into sekiro.exe .rdata, compare against statically extracted vftable RVAs",
+      "note": "the live scan independently reached the same class the static string-literal placement had predicted"
+    },
+    "realTimeValidation": {
+      "pollHz": 30,
+      "durationSeconds": 240,
+      "candidatesWatched": 176,
+      "objectVptrStable": true,
+      "scriptedSequence": [
+        "deflect",
+        "deflect",
+        "block",
+        "block",
+        "deflect",
+        "block"
+      ],
+      "observedTransitions": [
+        {
+          "tSeconds": 8.471,
+          "from": 0,
+          "to": 1,
+          "matches": "deflect #1"
+        },
+        {
+          "tSeconds": 15.448,
+          "from": 1,
+          "to": 0,
+          "matches": "block #1"
+        },
+        {
+          "tSeconds": 24.382,
+          "from": 0,
+          "to": 1,
+          "matches": "deflect #3"
+        },
+        {
+          "tSeconds": 36.416,
+          "from": 1,
+          "to": 0,
+          "matches": "block #3"
+        }
+      ],
+      "missedByDesign": "deflect #2 and block #2 produced no transition (value already held that state)",
+      "verdict": "order and direction matched exactly; value only ever took 0 or 1"
+    },
+    "playerOwnershipProof": {
+      "method": "scanned 8.96 GiB of readable memory for pointers to the module object, then typed its sibling module pointers by vptr",
+      "moduleTableAddress": "0x7ff4a5979260",
+      "siblings": {
+        "+0x00": "SprjChrActionFlagModule",
+        "+0x28": "SprjChrBehaviorModule",
+        "+0x48": "CSChrToughnessModule",
+        "+0x80": "SprjChrActionRequestModule",
+        "+0x90": "SprjPlayerHitStopModule",
+        "+0x98": "SprjPlayerDamageModule"
+      },
+      "conclusion": "the table holds the Player-specific concrete types, not SprjEnemyDamageModule, so this character is the player",
+      "bonus": "CSChrToughnessModule (posture/Taikan) sits at +0x48 of the same table, confirming posture is not in PlayerGameData"
+    },
+    "refutedCompetitors": [
+      {
+        "address": "0x7ff4351e5c68",
+        "behaviour": "pulsed once per deflect (3/3), silent on blocks - would solve consecutive detection",
+        "verdict": "no vftable within 128KiB, owner unknown, cannot establish ownership"
+      },
+      {
+        "address": "0x7ff491a4db04",
+        "behaviour": "returned to 0 during deflect #2",
+        "verdict": "does not discriminate blocks"
+      },
+      {
+        "address": "0x7ff49231f034",
+        "behaviour": "same",
+        "verdict": "owning class unknown (vftable RVA 0x3a50000)"
+      }
+    ],
+    "openProblems": [
+      "consecutive deflects are still not distinguishable - the bool holds at 1, so the 2nd and later of a rapid run are missed (structural limit of this signal)",
+      "ground truth is the user's self-reported scripted sequence, not independent video with clock sync",
+      "still the DISCOVERY session; no held-out session evaluation has been run",
+      "death-triggered replacement not tested (area transition was)"
+    ],
+    "hapticOutputConnected": false,
+    "pointerPath": {
+      "resolved": true,
+      "rootStaticSlotRva": "0x3d7a1e0",
+      "rootResolvedBy": "repo AOB 48 8B 35 ?? ?? ?? ?? 44 0F 28 18 (dispOff 3, insnLen 7) applied to the LIVE decrypted .text; exactly one match at RVA 0x87f2f0",
+      "chain": [
+        {
+          "from": "sekiro.exe + 0x3D7A1E0",
+          "to": "WorldChrMan",
+          "vftableRva": "0x2a30058"
+        },
+        {
+          "offset": "0x88",
+          "to": "PlayerIns",
+          "vftableRva": "0x2a2b338"
+        },
+        {
+          "offset": "0x10B8",
+          "to": "module container",
+          "vftableRva": null
+        },
+        {
+          "offset": "0x1D0",
+          "to": "SprjChrActionFlagModule",
+          "vftableRva": "0x2a72158"
+        },
+        {
+          "offset": "0xE10",
+          "to": "deflect flag",
+          "type": "u8"
+        }
+      ],
+      "alternatePaths": "+0x88 then +0x1100/+0x1118/+0x1150/+0x1168 with +0x190/+0x150/+0x130/+0xF0 all converge on the same object",
+      "objectReplacementTest": {
+        "method": "chain re-resolved every tick, vptr re-validated; user travelled to another area via an idol and returned",
+        "objectsSeen": [
+          "0x7ff4a5979470",
+          "0x7ff4a900b470",
+          "0x7ff4a7243cd0"
+        ],
+        "replacementsTracked": 2,
+        "behaviourDuringLoad": "fail-closed (WorldChrMan null / hop null); never read a stale value",
+        "afterReplacement": "flag still discriminated deflect (0->1) and block (1->0) on a completely different object address",
+        "verdict": "PASS"
+      },
+      "correction_2026_09_19": {
+        "claimRetracted": "the fixed chain PlayerIns +0x10B8 -> +0x1D0 recorded in 6.8 is NOT a structural invariant",
+        "evidence": "re-checked in the same game process: PlayerIns+0x10B8 still resolves to an object, but its +0x1D0 is 0x30474154306e0000 (not a pointer) and fails the vptr check; the module was instead reachable via PlayerIns +0x50 -> +0xB50 and four other offsets",
+        "stillStable": [
+          "[sekiro.exe + 0x3D7A1E0] -> WorldChrMan (AOB, one match image-wide, vptr NS_SPRJ::WorldChrManImp)",
+          "WorldChrMan + 0x88 -> PlayerIns (vptr NS_SPRJ::PlayerIns)"
+        ],
+        "adoptedApproach": "anchor on PlayerIns, then locate each module by a vptr-validated bounded search; cache the pointer but re-validate its vptr every tick",
+        "enabledBy": "docs/astra/results/static/vftable_map.py extracted a complete vftable-RVA -> class-name map (9581 entries) from the plaintext RTTI"
+      }
+    }
+  },
+  "safetyBoundary": {
+    "memoryWrites": false,
+    "dllInjection": false,
+    "codePatching": false,
+    "inputAutomation": false,
+    "gameOrSaveModification": false,
+    "exeUnpacking": false,
+    "gameBinaryUploaded": false,
+    "hapticOutputConnected": false
+  },
+  "evidenceFiles": [
+    "docs/astra/results/DEFLECT_STATUS.md",
+    "docs/astra/results/DEFLECT_EVIDENCE.json",
+    "docs/astra/results/static/xref.py",
+    "docs/astra/results/static/rtti.py",
+    "docs/astra/results/static/dump_vft.py",
+    "docs/astra/results/static/vftables.json",
+    "docs/astra/results/static/vft_report.txt",
+    "feedback_update_backups/20260912T010132Z-ag4a3716 (pre-update originals)"
+  ],
+  "nextAction": "Optional: independent-video ground truth for a graded measurement. Otherwise the next task is wiring deflect/block to differentiated haptic output, which now has a validated event source.",
+  "fileHashes": {
+    "docs/astra/results/static/vftables.json": "131c62161c966428cb237186f48ef93322749461209adb9434df8d7ebfcee012",
+    "docs/astra/results/DEFLECT_STATUS.md": "91190897f629a53503d734523930ac154ed1d873d5ec23c0e223fd4ce4aff8fb"
+  },
+  "occurrenceWork_2026_09_19": {
+    "problem": "the confirmed outcome byte (+0xE10) holds its value, so deflect->deflect and block->block produce no transition; a second, independent 'a new guard resolution happened' signal is required",
+    "occurrenceFieldFound": true,
+    "status": "occurrence signal found and validated in the discovery session; held-out session validation still outstanding",
+    "filesAdded": [
+      {
+        "path": "include/sekiro_haptics/process/GuardOutcomeEventDetector.hpp",
+        "why": "turns (occurrence signal + outcome byte) into one event per guard resolution under strict anti-fabrication rules"
+      },
+      {
+        "path": "tests/test_guard_outcome_event_detector.cpp",
+        "why": "18 boundary tests for those rules"
+      },
+      {
+        "path": "tools/deflect_occurrence_record.py",
+        "why": "READ-ONLY 5ms recorder anchored on PlayerIns with per-tick vptr re-validation; emits capture schema v3"
+      },
+      {
+        "path": "tools/deflect_occurrence.py",
+        "why": "find (rank occurrence candidates) and replay (capture -> guard event log)"
+      },
+      {
+        "path": "tests/test_deflect_occurrence.py",
+        "why": "same 18 scenarios as the C++ tests so the replay tool and runtime detector cannot drift"
+      },
+      {
+        "path": "docs/astra/results/static/vftable_map.py",
+        "why": "complete vftable RVA -> class name map so any live object can be typed"
+      }
+    ],
+    "filesModified": [
+      {
+        "path": "tests/CMakeLists.txt",
+        "why": "register the new C++ test file and the new Python test"
+      }
+    ],
+    "rulesEnforced": {
+      "noEventWhileOutcomeMerelyHolds": "GuardOutcome_HeldOutcomeWithoutOccurrenceChange_EmitsNothing",
+      "zeroOutcomeIsNotABlockEvent": "GuardOutcome_IdleAtZero_NeverEmitsABlock",
+      "outcomeReadFromTheSameObservation": "GuardOutcome_LaggingOutcome_ClassifiesFromSettledValue",
+      "laggingOutcomeHeldNotGuessed": "GuardOutcome_NextOccurrenceBeforeSettle_ReportsUnresolvedNotAGuess",
+      "counterJumpIsOneUnresolvedNotNEvents": "GuardOutcome_CounterJump_ReportsOneUnresolvedNotTwoEvents",
+      "counterWrapIsOneStep": "GuardOutcome_CounterWrap_CountsAsOneStepNotAHugeJump",
+      "firstObservationIsBaselineOnly": "GuardOutcome_FirstObservation_IsBaselineOnly",
+      "noDiffAcrossObjectReplacement": "GuardOutcome_ObjectReplacement_DoesNotDiffAcrossInstances",
+      "noFabricationAfterReadFailure": "GuardOutcome_ReadFailure_ThenResume_EmitsNoFabricatedEvent",
+      "noFabricationAfterGap": "GuardOutcome_CaptureGap_BreaksContinuityAndResumesCleanly",
+      "noTimeBasedMerging": "GuardOutcome_RapidResolutions_AreNotMergedByProximity",
+      "outcomeOutOfRangeIsUnresolved": "GuardOutcome_OutcomeOutsideZeroOne_IsUnresolvedNotADeflect"
+    },
+    "commandsRun": {
+      "build": "cmake --build build-deflect -> success",
+      "tests": "ctest --test-dir build-deflect --output-on-failure -> 4/4 suites passed",
+      "cppUnitTests": "643/643 (was 625, +18 new)",
+      "pythonOccurrenceRules": "18/18",
+      "liveRecorderSmokeTest": "python tools/deflect_occurrence_record.py --pid 10132 --seconds 12 --interval-ms 5 -> samples=2398 dropped=0 gaps=0 objectSwaps=0 moduleSearches=1; output accepted by tools/deflect_capture.py"
+    },
+    "liveFindingSoFar": "over 12 idle seconds not one aligned 4-byte cell changed in the ActionFlagModule 0x1800 window, so the object is quiet and any change during real hits should stand out; the occurrence signal may still live in a sibling module, which is why the recorder can also record the damage/hitstop/toughness/action-request/behavior modules",
+    "notConfirmed": [
+      "ground truth is the user's self-report, not independent video with clock sync",
+      "this is the DISCOVERY session; no held-out session evaluation has been run",
+      "phase p0 (nominally a running/rest phase) produced 5 pulses; real guards probably happened there but there is no recorded ground truth, so these are NOT asserted to be correct detections",
+      "object replacement / loading behaviour was not exercised in this capture",
+      "the 'enemy deflects my attack' case was not recorded"
+    ],
+    "confirmedOccurrenceSignal": {
+      "class": "SprjChrActionFlagModule",
+      "offset": "0x3C",
+      "shape": "one-frame pulse 0 -> 1 -> 0",
+      "pulseDurationMs": 15,
+      "meaning": "fires once per guard resolution, including repeats of the same outcome",
+      "outcomeOffset": "0xE10",
+      "outcomeSemantics": {
+        "0": "normal block",
+        "1": "deflect"
+      },
+      "corroboratingOutcomeOffset": "0x64",
+      "corroboratingSemantics": {
+        "0x00010001": "deflect",
+        "0xFFFF0001": "block"
+      },
+      "samePlayerObject": "all three live in the SprjChrActionFlagModule instance whose player ownership was type-proven in 6.5",
+      "outcomeLagObserved": "none - the outcome byte already held the new value in the same sample as the pulse",
+      "pollingRequirement": "the pulse lasts about one frame, so polling must be ~5ms; the C++ capture session's 200ms default would miss almost every pulse"
+    },
+    "phaseEvidence": {
+      "capture": "300s, 59798 samples, 5ms, pid 8312, generation stayed 1",
+      "pulsesPerPhase": {
+        "p0 running (contaminated by a deflect)": 5,
+        "p1 deflect burst": 5,
+        "p2 running": 0,
+        "p3 five blocks": 5,
+        "p4 running": 0,
+        "p5 two deflects + three blocks": 5,
+        "p6 running": 0,
+        "p7 empty guard held": 0,
+        "p8 running": 0,
+        "p9 hit twice without guarding": 0,
+        "p10 running": 0
+      },
+      "negativeControlsPassed": [
+        "holding guard with no incoming attack produced 0 pulses",
+        "being hit twice while not guarding produced 0 pulses"
+      ],
+      "decisiveCase": "p5 was deflect,deflect,block,block,block - five pulses, classified D,D,B,B,B, even though the outcome byte only changed twice"
+    },
+    "replayResult": {
+      "command": "python tools/deflect_occurrence.py replay occ-01.jsonl --occurrence 0x3c --mode pulse",
+      "deflect": 12,
+      "block": 8,
+      "unresolved": 0,
+      "scenarioTable": {
+        "repeatedDeflects": "PASS (5 -> 5)",
+        "repeatedBlocks": "PASS (5 -> 5)",
+        "mixedOrder": "PASS (D,D,B,B,B)",
+        "idleAndEmptyGuard": "PASS (0 events)",
+        "hitWithoutGuarding": "PASS (0 events)",
+        "enemyDeflectsMyAttack": "NOT TESTED - no such phase in this session",
+        "loadingAndObjectReplacement": "NOT EXERCISED - generation stayed 1 in this capture"
+      }
+    },
+    "heldOutValidation": {
+      "performed": true,
+      "capture": "occ-02.jsonl (separate play session)",
+      "captureSha256": "39d6088bd78d7e681cb59f7b961262ff7fea0b51e7b22843501b2d0d0553a76e",
+      "durationSeconds": 299.5,
+      "samples": 58996,
+      "records": {
+        "delta": 288018,
+        "baseline": 39,
+        "gap": 36,
+        "dropped": 631,
+        "discontinuity": 3
+      },
+      "offsetsFrozenBeforehand": true,
+      "rulesNotTunedOnThisData": true,
+      "positiveControls": {
+        "fiveDeflectsInARow": "5 deflect events at 16.5 17.9 19.3 21.6 23.9s - PASS",
+        "fiveBlocksInARow": "5 block events at 35.4 36.5 37.6 39.1 40.1s - PASS",
+        "mixedDDBBD": "48.6 D, 49.9 D, 51.3 B, 53.3 B, 54.4 D - kind and order exactly as instructed - PASS"
+      },
+      "totals": {
+        "deflect": 8,
+        "block": 7,
+        "unresolved": 0
+      },
+      "negativeControls": {
+        "running": 0,
+        "emptyGuardHeld": 0,
+        "hitTwiceWithoutGuarding": 0,
+        "iAttackedAndEnemyTookAllFiveHits": 0,
+        "enemyBlockedMyAttack": 0,
+        "areaTransitionLoadingWithThreeObjectSwaps": 0
+      },
+      "enemyGuardIsNotDetected": "the enemy blocking my attack produced 0 events, direct evidence the signal is the PLAYER's own guard resolution and not any character's - consistent with the type-level ownership proof in 6.5",
+      "objectReplacementBehaviour": {
+        "discontinuities": [
+          {
+            "tSeconds": 142.91,
+            "gen": "1->2"
+          },
+          {
+            "tSeconds": 161.74,
+            "gen": "2->3"
+          },
+          {
+            "tSeconds": 163.07,
+            "gen": "3->4"
+          }
+        ],
+        "droppedReasons": {
+          "PlayerIns null": 592,
+          "WorldChrMan null": 39
+        },
+        "outcomeByteChangedAt142_91s": "1 -> 0, but NO event was emitted - it was the new object's initial value, suppressed by the continuity rule",
+        "verdict": "fail-closed during loading; no fabricated events"
+      },
+      "notConfirmed": [
+        "no guard action was performed AFTER the area transition - from 163s on the player was only attacking, and both the pulse and the outcome byte stayed still, so 'deflect/block still detected after object replacement' was NOT directly verified",
+        "ground truth remains the user's self-report; no independent video with clock sync",
+        "some F5 markers were missed (15 recorded), so the later phase boundaries rely on the self-report"
+      ]
+    },
+    "observationBugsFound": {
+      "discoveredBy": "trying to verify the one item 7.7 left open (guards after an area transition)",
+      "symptom": "occ-03 (180s, 35295 samples) produced 0 events; +0xE10 and +0x3C were 0 in every sample while SprjPlayerDamageModule+0x70 changed 3452 times, so the player was active",
+      "proof": "a cache-free diagnostic on the same live process saw +0xE10 move 0->1 and 1->0, so the signal was fine and the observation code was wrong",
+      "bug1": {
+        "title": "a vptr check alone does not prove an object is live",
+        "detail": "after an object swap the freed allocation can still hold the old vftable pointer, so a cached module keeps passing its type check; occ-03 read such a dead copy for 180 seconds while appearing to work",
+        "fix": "re-resolve PlayerIns every tick and discard the whole module cache whenever it changes",
+        "whyItMatters": "with haptic output wired this would have gone silently dead after an area transition while looking healthy"
+      },
+      "bug2": {
+        "title": "'first object with the wanted vptr' is arbitrary",
+        "detail": "the BFS introduced in 6.9 took whichever matching object it met first, which depends on traversal order",
+        "fix": "take the module set only from a container that also holds SprjPlayerDamageModule - the player-specific concrete type, the same ownership proof as 6.5"
+      },
+      "verificationAfterFix": {
+        "capture": "occ-04, 75s, 14986 samples",
+        "instructed": "3 deflects then 3 blocks",
+        "result": "deflect=3 block=3 unresolved=0, in order at 32.5/33.9/35.3s and 37.6/38.6/39.7s",
+        "recorderStats": "moduleSearches=1 dropped=0 objectSwaps=0"
+      },
+      "stillOpen": "occ-04 contained no object swap, so the fixed locator has not yet been shown to keep working across a real area transition"
+    },
+    "objectReplacementValidation": {
+      "capture": "occ-05.jsonl",
+      "captureSha256": "13efcf6ea9e7369f1c69def6cd588a3c2776ccab2e7f5f0b206ec306b5994c57",
+      "durationSeconds": 91.8,
+      "samples": 17725,
+      "instructed": "2 deflects, 2 blocks, travel to another area via an idol and return, 2 deflects, 2 blocks",
+      "beforeTransition": [
+        "5.052s deflect",
+        "6.417s deflect",
+        "7.782s block",
+        "9.782s block"
+      ],
+      "objectSwaps": [
+        {
+          "tSeconds": 34.27,
+          "gen": "1->2"
+        },
+        {
+          "tSeconds": 58.0,
+          "gen": "2->3"
+        }
+      ],
+      "duringLoading": {
+        "dropped": 583,
+        "reasons": {
+          "PlayerIns null": 544,
+          "WorldChrMan null": 39
+        },
+        "fabricatedEvents": 0
+      },
+      "afterTransition": [
+        "78.082s deflect",
+        "79.467s deflect",
+        "80.852s block",
+        "82.952s block"
+      ],
+      "totals": {
+        "deflect": 4,
+        "block": 4,
+        "unresolved": 0
+      },
+      "verdict": "PASS - the fixed locator keeps detecting across a real area transition, which is exactly where occ-03 failed"
+    },
+    "stillOpen": null,
+    "goalStatus": "ACHIEVED - consecutive deflects and consecutive blocks are recognised as separate events, validated on a held-out session and across object replacement"
+  },
+  "confirmedSignalChain": {
+    "rootStaticSlotRva": "0x3D7A1E0",
+    "rootVftableRva": "0x2A30058 (NS_SPRJ::WorldChrManImp)",
+    "playerInsOffset": "0x88",
+    "playerInsVftableRva": "0x2A2B338 (NS_SPRJ::PlayerIns)",
+    "moduleSelection": "vptr search from PlayerIns, accepted only from a container that also holds SprjPlayerDamageModule",
+    "occurrence": {
+      "offset": "0x3C",
+      "shape": "one-frame (~15ms) pulse 0->1->0",
+      "meaning": "one per guard resolution"
+    },
+    "outcome": {
+      "offset": "0xE10",
+      "0": "normal block",
+      "1": "deflect"
+    },
+    "corroboration": {
+      "offset": "0x64",
+      "0x00010001": "deflect",
+      "0xFFFF0001": "block"
+    },
+    "pollingRequirement": "~5ms; the C++ capture session's 200ms default would miss almost every pulse"
+  },
+  "remainingGaps": [
+    "all ground truth is the user's self-report, not independent video with clock sync",
+    "object replacement by DEATH was not tested (area transition was)",
+    "false-positive rate in other combat situations (bosses, multiple enemies) was not measured",
+    "haptic output is still not wired - out of scope for this task"
+  ]
+}
