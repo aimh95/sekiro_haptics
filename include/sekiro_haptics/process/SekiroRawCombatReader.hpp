@@ -49,7 +49,8 @@ inline constexpr std::size_t kCombatFieldBlockSizeBytes = 0x24;
 ///   fail basic sanity checks (MaxHP/MaxPosture <= 0, HP/Posture out of
 ///   [0, Max], or either exceeding a generous unrealistic upper bound) --
 ///   never silently accepted as real game data.
-/// - Valid: every invariant holds.
+/// - Valid: numeric sanity and pointer checks hold. This does NOT validate
+///   the hypothesized field meanings or prove a Sekiro event.
 enum class CombatSnapshotStatus {
     UnsupportedBuild,
     SignatureNotFound,
@@ -68,7 +69,7 @@ struct CombatResolveResult {
     CombatSnapshotStatus status = CombatSnapshotStatus::SignatureNotFound;
     std::uintptr_t gameDataManAddress = 0;
     std::uintptr_t playerGameDataAddress = 0;
-    /// PlayerGameData's own resolve generation -- see CombatSnapshot::generation.
+    /// Composite root/child observation epoch, including recovery after a gap.
     std::uint64_t generation = 0;
 };
 
@@ -95,10 +96,10 @@ struct CombatSnapshot {
 /// Composes a GameDataMan root (Stage A's SekiroKnownRootResolver) with one
 /// further pointer dereference to PlayerGameData (Stage A's
 /// SekiroChildPointerResolver), then reads/validates the four combat
-/// fields. Resolve() is never called automatically by ReadSnapshot() --
-/// a caller driving a live sampling loop is expected to call Resolve() only
-/// at session start and after a detected failure, then call ReadSnapshot()
-/// many times against the same resolved address (no per-sample AOB scan).
+/// fields. Resolve() performs the initial AOB scan; Refresh() re-reads the
+/// cached root slot and child pointer. ReadSnapshot() refreshes before and
+/// after its field read. This detects observed pointer changes, not every
+/// possible ABA reuse or simultaneous mutation of game memory.
 class SekiroRawCombatReader {
 public:
     /// `playerGameDataOffsetFromGameDataMan` is the signed byte offset
@@ -112,11 +113,14 @@ public:
 
     CombatResolveResult Resolve();
 
-    /// Takes one snapshot using the currently resolved PlayerGameData
-    /// address, without re-resolving anything or re-scanning for the AOB.
+    CombatResolveResult Refresh();
+    CombatResolveResult Current() const { return current_; }
+
+    /// Reads fields between two pointer-chain checks, without an AOB scan.
     CombatSnapshot ReadSnapshot();
 
 private:
+    CombatResolveResult ResolveChild(const ResolvedRoot& root);
     IProcessReader& reader_;
     SekiroKnownRootResolver gameDataManResolver_;
     SekiroChildPointerResolver playerGameDataResolver_;
@@ -124,6 +128,8 @@ private:
     bool resolved_ = false;
     std::uintptr_t playerGameDataAddress_ = 0;
     std::uint64_t generation_ = 0;
+    std::uintptr_t gameDataManAddress_ = 0;
+    CombatResolveResult current_;
 };
 
 } // namespace sekiro_haptics::process

@@ -16,7 +16,7 @@ namespace sekiro_haptics::process {
 /// process. See docs/05-process-access.md.
 ///
 /// Access rights requested are exactly kProcessAccessMask
-/// (PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ) -- never
+/// (PROCESS_QUERY_INFORMATION | PROCESS_VM_READ) -- never
 /// PROCESS_VM_WRITE, PROCESS_VM_OPERATION, or PROCESS_ALL_ACCESS, and
 /// WriteProcessMemory/VirtualAllocEx/VirtualProtectEx/CreateRemoteThread/
 /// SetThreadContext are never called anywhere in this class. That

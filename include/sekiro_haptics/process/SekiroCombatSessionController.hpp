@@ -8,6 +8,13 @@
 // operations, SekiroCombatCommandProcessor owns text parsing/formatting,
 // apps/sekiro_signal_probe/main.cpp stays a thin Win32 adapter. See
 // docs/07-combat-signal-reader.md.
+//
+// SEK-PROBE-001E Section 6 moves sampling onto its own dedicated thread
+// (separate from the CLI's stdin/command-processing thread), while marks
+// still arrive from hotkey/command-queue processing on the main thread --
+// so every method here that touches shared state (resolve state or the
+// active capture session) is internally serialized with a mutex. Callers
+// never need to lock anything themselves.
 
 #include "sekiro_haptics/process/IProcessInspector.hpp"
 #include "sekiro_haptics/process/IProcessReader.hpp"
@@ -17,6 +24,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace sekiro_haptics::process {
@@ -31,8 +39,8 @@ struct CombatPlanReport {
     /// Bytes an AOB (re-)scan covers -- the main module's own image size.
     /// Only meaningful when `moduleFound`.
     std::size_t aobScanRangeBytes = 0;
-    /// Bytes one ReadSnapshot() call reads in steady state.
-    std::size_t expectedBytesPerSampleBytes = kCombatFieldBlockSizeBytes;
+    /// Field block + four 64-bit pointer reads (pre/post root and child).
+    std::size_t expectedBytesPerSampleBytes = kCombatFieldBlockSizeBytes + 4 * sizeof(std::uint64_t);
     bool fullScanUsed = false;
 };
 
@@ -49,30 +57,34 @@ public:
     CombatPlanReport Plan() const;
 
     /// Resolves (or re-resolves) the pointer chain; result also becomes
-    /// LastResolve(). Never called automatically by CaptureTick() -- a
-    /// capture keeps using whatever address the most recent Resolve()
-    /// produced until the caller resolves again.
+    /// LastResolve(). CaptureTick() refreshes the cached pointer chain on
+    /// each due sample; it does not repeat this full AOB scan.
     CombatResolveResult Resolve();
 
-    /// Takes one snapshot against the currently resolved address (does not
-    /// re-resolve); result also becomes LastSnapshot().
+    /// Takes a snapshot between pointer-chain checks; result also becomes LastSnapshot().
     CombatSnapshot Snapshot();
 
-    CombatResolveResult LastResolve() const { return lastResolve_; }
-    CombatSnapshot LastSnapshot() const { return lastSnapshot_; }
+    CombatResolveResult LastResolve() const;
+    CombatSnapshot LastSnapshot() const;
 
-    /// Starts a bounded, delta-only capture at the *currently* resolved
-    /// PlayerGameData address (LastResolve()) -- InvalidConfig if nothing
-    /// is resolved yet (address 0).
+    /// Starts a bounded schema-v3 capture with exclusive file creation. For `config.scope ==
+    /// PlayerGameData`, uses the *currently* resolved PlayerGameData address
+    /// (LastResolve()) -- InvalidConfig if nothing is resolved yet (address
+    /// 0). For `config.scope == CustomAddress`, uses `config.customBaseAddress`
+    /// directly -- InvalidConfig if that's 0.
     CombatCaptureStartResult StartCapture(const CombatCaptureConfig& config, const std::string& outputPath,
                                            std::int64_t nowMonotonicUs);
 
-    /// One capture read+diff+write cycle, using whatever address/generation
-    /// LastResolve() currently holds (never re-scans). False if no capture
-    /// is running.
+    /// One capture read+diff+write cycle. For a PlayerGameData-scoped
+    /// capture, refreshes the cached pointer chain before and after reading
+    /// bytes (never re-scans); for a CustomAddress-scoped capture, the fixed
+    /// address given to StartCapture() (always available, generation never
+    /// changes). False if no capture is running.
     bool CaptureTick(std::int64_t nowMonotonicUs);
 
-    bool CaptureMark(const std::string& label, std::int64_t nowMonotonicUs);
+    /// `inputTimestampUs`/`processedTimestampUs` are forwarded as-is to
+    /// SekiroCombatCaptureSession::Mark() -- see its doc comment.
+    bool CaptureMark(const std::string& label, std::int64_t inputTimestampUs, std::int64_t processedTimestampUs);
 
     void StopCapture();
 
@@ -85,10 +97,13 @@ private:
     IProcessInspector& inspector_;
     IProcessReader& processReader_;
 
+    mutable std::mutex mutex_;
     CombatResolveResult lastResolve_;
     CombatSnapshot lastSnapshot_;
 
     std::unique_ptr<SekiroCombatCaptureSession> captureSession_;
+    CombatCaptureScope activeCaptureScope_ = CombatCaptureScope::PlayerGameData;
+    std::uintptr_t customCaptureBaseAddress_ = 0;
 };
 
 } // namespace sekiro_haptics::process

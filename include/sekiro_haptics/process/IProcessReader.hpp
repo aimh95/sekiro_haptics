@@ -7,7 +7,7 @@
 namespace sekiro_haptics::process {
 
 /// The exact OpenProcess access mask every IProcessReader implementation
-/// must request: PROCESS_QUERY_LIMITED_INFORMATION (0x1000) |
+/// must request: PROCESS_QUERY_INFORMATION (0x0400, required by VirtualQueryEx) |
 /// PROCESS_VM_READ (0x0010). Read-only, minimal-privilege by construction
 /// -- there is no corresponding write/allocate/thread-injection mask
 /// anywhere in this module, and there must never be one. See
@@ -16,9 +16,9 @@ namespace sekiro_haptics::process {
 /// Defined here (not just inside the Win32 implementation) so a Fake-API
 /// unit test can assert the real implementation requests exactly this
 /// value without needing <windows.h> itself; Win32ProcessReader.cpp
-/// static_asserts this equals the real PROCESS_QUERY_LIMITED_INFORMATION |
+/// static_asserts this equals the real PROCESS_QUERY_INFORMATION |
 /// PROCESS_VM_READ macros.
-inline constexpr std::uint32_t kProcessAccessMask = 0x1000u | 0x0010u;
+inline constexpr std::uint32_t kProcessAccessMask = 0x0400u | 0x0010u;
 
 /// Outcome of an IProcessReader attach/read operation. One shared enum
 /// across both operation kinds (matching this project's existing

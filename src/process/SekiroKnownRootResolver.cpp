@@ -61,7 +61,8 @@ bool AddSignedOffset(std::uintptr_t base, std::int64_t offset, std::uintptr_t& o
         outAddress = result;
         return true;
     }
-    auto uoffset = static_cast<std::uintptr_t>(-offset);
+    // Avoid signed overflow when the offset is INT64_MIN.
+    auto uoffset = static_cast<std::uint64_t>(-(offset + 1)) + 1;
     if (uoffset > base) {
         return false; // underflow
     }
@@ -106,6 +107,7 @@ SekiroKnownRootResolver::SekiroKnownRootResolver(IProcessReader& reader, IProces
       identitySupported_(SameBuild(expectedIdentity, currentIdentity)) {}
 
 ResolvedRoot SekiroKnownRootResolver::Resolve() {
+    pointerSlotAddress_ = 0;
     auto Fail = [&](RootResolveResult result) -> ResolvedRoot {
         current_ = ResolvedRoot{result, 0, current_.generation};
         return current_;
@@ -155,8 +157,22 @@ ResolvedRoot SekiroKnownRootResolver::Resolve() {
         return Fail(MapAobScanResult(ripResult));
     }
 
+    pointerSlotAddress_ = pointerSlotAddress;
+    return Refresh();
+}
+
+ResolvedRoot SekiroKnownRootResolver::Refresh() {
+    auto Fail = [&](RootResolveResult result) {
+        current_ = ResolvedRoot{result, 0, current_.generation};
+        return current_;
+    };
+    if (!identitySupported_) return Fail(RootResolveResult::UnsupportedBuild);
+    if (!reader_.IsAttached()) return Fail(RootResolveResult::NotAttached);
+    if (!reader_.IsAlive()) return Fail(RootResolveResult::ProcessExited);
+    if (pointerSlotAddress_ == 0) return Fail(RootResolveResult::SignatureNotFound);
+
     std::uint64_t rawPointerValue = 0;
-    ProcessReaderResult readResult = reader_.ReadBytes(pointerSlotAddress, &rawPointerValue, sizeof(rawPointerValue));
+    ProcessReaderResult readResult = reader_.ReadBytes(pointerSlotAddress_, &rawPointerValue, sizeof(rawPointerValue));
     if (readResult != ProcessReaderResult::Success) {
         return Fail(MapReaderResult(readResult));
     }

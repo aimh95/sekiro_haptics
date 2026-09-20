@@ -1,5 +1,6 @@
 add_executable(sekiro_haptics_tests
     test_main.cpp
+    test_action_feedback.cpp
     test_haptic_effect.cpp
     test_mock_backend.cpp
     test_scheduler.cpp
@@ -44,6 +45,14 @@ add_executable(sekiro_haptics_tests
     # SEK-PROBE-001D Stage C -- capture session + offline analyzer.
     test_sekiro_combat_capture_session.cpp
     test_sekiro_combat_capture_analyzer.cpp
+    # SEK-PROBE-001E Unit 1 live-acceptance prep -- shared hotkey/controller
+    # input debounce/edge-detection logic, and controller/processor-level
+    # integration tests standing in for main.cpp's real threading design.
+    test_monotonic_debounce.cpp
+    test_rising_edge_detector.cpp
+    test_guard_outcome_event_detector.cpp
+    test_guard_cue.cpp
+    test_sekiro_combat_capture_integration.cpp
 )
 target_include_directories(sekiro_haptics_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics)
@@ -145,3 +154,15 @@ if(UNIX AND NOT APPLE)
 endif()
 
 add_test(NAME sekiro_haptics_unit_tests COMMAND sekiro_haptics_tests)
+
+find_package(Python3 3.10 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_executable(capture_v3_fixture capture_v3_fixture.cpp)
+    target_link_libraries(capture_v3_fixture PRIVATE sekiro_haptics)
+    add_test(NAME capture_v3_decoder COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_capture_v3.py --writer $<TARGET_FILE:capture_v3_fixture>)
+    add_test(NAME deflect_signal_analysis COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_deflect_signal.py)
+    add_test(NAME deflect_occurrence_rules COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_deflect_occurrence.py)
+endif()

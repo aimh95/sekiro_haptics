@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <limits>
 #include <utility>
 
 namespace sekiro_haptics::process {
@@ -82,31 +83,42 @@ SekiroRawCombatReader::SekiroRawCombatReader(IProcessReader& reader, IProcessIns
       playerGameDataResolver_(reader, playerGameDataOffsetFromGameDataMan) {}
 
 CombatResolveResult SekiroRawCombatReader::Resolve() {
-    resolved_ = false;
-    playerGameDataAddress_ = 0;
+    return ResolveChild(gameDataManResolver_.Resolve());
+}
 
+CombatResolveResult SekiroRawCombatReader::Refresh() {
+    return ResolveChild(gameDataManResolver_.Refresh());
+}
+
+CombatResolveResult SekiroRawCombatReader::ResolveChild(const ResolvedRoot& gameDataMan) {
     CombatResolveResult result;
-
-    ResolvedRoot gameDataMan = gameDataManResolver_.Resolve();
     if (gameDataMan.result != RootResolveResult::Resolved) {
         result.status = MapRootResolveFailure(gameDataMan.result);
-        return result;
+        resolved_ = false;
+        playerGameDataAddress_ = 0;
+        return current_ = result;
     }
     result.gameDataManAddress = gameDataMan.objectAddress;
 
     ResolvedRoot playerGameData = playerGameDataResolver_.Resolve(gameDataMan.objectAddress);
     if (playerGameData.result != RootResolveResult::Resolved) {
         result.status = MapRootResolveFailure(playerGameData.result);
-        return result;
+        resolved_ = false;
+        playerGameDataAddress_ = 0;
+        return current_ = result;
     }
     result.playerGameDataAddress = playerGameData.objectAddress;
-    result.generation = playerGameData.generation;
+    if (!resolved_ || gameDataManAddress_ != gameDataMan.objectAddress ||
+        playerGameDataAddress_ != playerGameData.objectAddress) {
+        ++generation_; // Composite observation epoch, including recovery after a gap.
+    }
+    result.generation = generation_;
     result.status = CombatSnapshotStatus::ResolvedUnvalidated;
 
     resolved_ = true;
     playerGameDataAddress_ = playerGameData.objectAddress;
-    generation_ = playerGameData.generation;
-    return result;
+    gameDataManAddress_ = gameDataMan.objectAddress;
+    return current_ = result;
 }
 
 CombatSnapshot SekiroRawCombatReader::ReadSnapshot() {
@@ -117,7 +129,17 @@ CombatSnapshot SekiroRawCombatReader::ReadSnapshot() {
         snapshot.status = CombatSnapshotStatus::TemporarilyUnavailable;
         return snapshot;
     }
-    snapshot.generation = generation_;
+    const auto before = Refresh();
+    if (before.status != CombatSnapshotStatus::ResolvedUnvalidated) {
+        snapshot.status = before.status;
+        return snapshot;
+    }
+    snapshot.generation = before.generation;
+    if (playerGameDataAddress_ > std::numeric_limits<std::uintptr_t>::max() -
+                                     (kFieldBlockBase + kCombatFieldBlockSizeBytes)) {
+        snapshot.status = CombatSnapshotStatus::ReadFailed;
+        return snapshot;
+    }
 
     std::uint8_t buffer[kCombatFieldBlockSizeBytes];
     ProcessReaderResult readResult =
@@ -125,6 +147,13 @@ CombatSnapshot SekiroRawCombatReader::ReadSnapshot() {
     if (readResult != ProcessReaderResult::Success) {
         snapshot.status = CombatSnapshotStatus::ReadFailed;
         return snapshot;
+    }
+
+    const auto after = Refresh();
+    if (after.status != CombatSnapshotStatus::ResolvedUnvalidated ||
+        after.generation != before.generation) {
+        snapshot.status = CombatSnapshotStatus::TemporarilyUnavailable;
+        return snapshot; // Discard bytes whose observed owner changed during the read.
     }
 
     std::int32_t hp = 0, maxHp = 0, posture = 0, maxPosture = 0;

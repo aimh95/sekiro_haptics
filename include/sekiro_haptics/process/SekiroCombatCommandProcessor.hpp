@@ -7,8 +7,16 @@
 // (see its own header comment). Recognizes only these verbs; any other verb
 // is reported unhandled so main.cpp's existing branches stay untouched. No
 // console I/O of its own, and never reads a clock itself (every
-// timestamp-needing call takes `nowMonotonicUs` from the caller, matching
+// timestamp-needing call takes timestamps from the caller, matching
 // SekiroCombatCaptureSession's own contract) -- portable and Fake-testable.
+//
+// `inputTimestampUs` (SEK-PROBE-001E Section 7) is the precise moment the
+// underlying input happened -- for a hotkey/controller-triggered command
+// this is captured at the source thread, *not* whenever this Process()
+// call actually gets around to running (which can lag behind by however
+// long the command queue was backed up) -- see main.cpp's CommandQueue.
+// `processedTimestampUs` is when this call executes, forwarded to
+// combat-mark purely for diagnosing queue lag, never used for correlation.
 
 #include "sekiro_haptics/process/SekiroCombatSessionController.hpp"
 
@@ -21,10 +29,9 @@ namespace sekiro_haptics::process {
 
 class SekiroCombatCommandProcessor {
 public:
-    /// `captureOutputPath` is where combat-capture writes its delta JSONL
-    /// (truncated fresh on each combat-capture start) and combat-analyze
-    /// reads back -- fixed for this processor's lifetime, matching how the
-    /// signal probe CLI already fixes watch.jsonl's path once at startup.
+    /// Preferred capture path. Existing paths are preserved; starts choose
+    /// a new numbered sibling via exclusive creation. Export reports the
+    /// path of the last successfully started capture.
     SekiroCombatCommandProcessor(SekiroCombatSessionController& controller, std::string captureOutputPath);
 
     struct ProcessResult {
@@ -32,20 +39,24 @@ public:
         std::vector<std::string> outputLines;
     };
 
-    ProcessResult Process(const std::string& commandLine, std::int64_t nowMonotonicUs);
+    ProcessResult Process(const std::string& commandLine, std::int64_t inputTimestampUs,
+                          std::int64_t processedTimestampUs);
 
 private:
     ProcessResult HandleCombatPlan();
     ProcessResult HandleCombatResolve();
     ProcessResult HandleCombatStatus();
     ProcessResult HandleCombatCapture(std::istringstream& args, std::int64_t nowMonotonicUs);
-    ProcessResult HandleCombatMark(std::istringstream& args, std::int64_t nowMonotonicUs);
+    ProcessResult HandleCombatMark(std::istringstream& args, std::int64_t inputTimestampUs,
+                                    std::int64_t processedTimestampUs);
     ProcessResult HandleCombatStop();
     ProcessResult HandleCombatAnalyze(std::istringstream& args);
     ProcessResult HandleCombatExport();
 
     SekiroCombatSessionController& controller_;
     std::string captureOutputPath_;
+    std::string preferredCaptureOutputPath_;
+    std::uint64_t capturePathSuffix_ = 0;
 };
 
 } // namespace sekiro_haptics::process

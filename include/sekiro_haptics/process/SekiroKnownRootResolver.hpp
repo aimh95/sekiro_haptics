@@ -121,6 +121,11 @@ public:
     /// except the address used for generation comparison.
     ResolvedRoot Resolve();
 
+    /// Re-read the cached global pointer slot without an AOB scan. Requires
+    /// a successful Resolve() in this process attachment. No object-address
+    /// cache is used for the dereference. Recreate the resolver on reattach.
+    ResolvedRoot Refresh();
+
     /// The outcome of the most recent Resolve() call, without touching the
     /// process. Default-constructed (SignatureNotFound, address 0,
     /// generation 0) if Resolve() has never been called.
@@ -139,6 +144,7 @@ private:
     /// different instance" even after an intervening failure.
     std::uintptr_t lastKnownAddress_ = 0;
     std::uint64_t nextGeneration_ = 1;
+    std::uintptr_t pointerSlotAddress_ = 0;
 };
 
 /// Tracks one pointer-sized dereference from an already-resolved parent

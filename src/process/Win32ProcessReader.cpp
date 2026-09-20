@@ -7,7 +7,7 @@
 
 namespace sekiro_haptics::process {
 
-static_assert(kProcessAccessMask == (PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ),
+static_assert(kProcessAccessMask == (PROCESS_QUERY_INFORMATION | PROCESS_VM_READ),
               "kProcessAccessMask must match the real Win32 access rights it documents");
 
 namespace {

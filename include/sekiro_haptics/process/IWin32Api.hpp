@@ -124,8 +124,8 @@ public:
 
     /// The full image path of the process owning `handle` (via
     /// QueryFullProcessImageNameW -- needs only
-    /// PROCESS_QUERY_LIMITED_INFORMATION, already part of
-    /// kProcessAccessMask, no extra access rights). False on failure,
+    /// PROCESS_QUERY_LIMITED_INFORMATION (also granted by the
+    /// PROCESS_QUERY_INFORMATION in kProcessAccessMask). False on failure,
     /// including a path too long for this call's internal buffer --
     /// never a silently truncated path.
     virtual bool GetProcessImagePath(void* handle, std::wstring& outPath) = 0;
