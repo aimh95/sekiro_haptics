@@ -110,6 +110,11 @@ struct DualSenseAudioDevice::Impl {
     std::size_t captureLimit = 0;
     std::vector<float> capture;
     AudioRenderStats stats;
+    /// Bounded ring of finished voices. Bounded because a long session would
+    /// otherwise accumulate one record per cue forever, and an unbounded
+    /// allocation on the render path is exactly what must not happen.
+    std::deque<VoiceLifecycleRecord> history;
+    std::size_t historyLimit = 256;
     int speakerChannel = -1;
     std::thread renderThread;
     std::atomic<bool> renderRunning{false};
@@ -460,8 +465,52 @@ void DualSenseAudioDevice::Close() {
     p.format = nullptr;
 }
 
+namespace {
+/// Files one finished voice into the bounded history. Caller holds the lock.
+void RecordVoiceEnd(std::deque<VoiceLifecycleRecord>& history, std::size_t limit,
+                    const AudioVoice& voice, VoiceEndReason reason, std::int64_t nowUs) {
+    if (limit == 0) return;
+    VoiceLifecycleRecord record;
+    record.correlationId = voice.correlationId;
+    record.sequence = voice.sequence;
+    record.channel = voice.channel;
+    record.queuedUs = voice.queuedUs;
+    record.firstRenderedUs = voice.firstRenderedUs;
+    record.endedUs = nowUs;
+    record.framesPlayed = voice.position;
+    record.clipFrames = voice.clip ? voice.clip->size() : 0;
+    record.reason = reason;
+    history.push_back(record);
+    while (history.size() > limit) history.pop_front();
+}
+} // namespace
+
+const char* ToString(VoiceEndReason reason) {
+    switch (reason) {
+        case VoiceEndReason::Completed: return "completed";
+        case VoiceEndReason::RetiredAtCap: return "retired-at-cap";
+        case VoiceEndReason::HardDropped: return "hard-dropped";
+        case VoiceEndReason::Dropped: return "dropped";
+    }
+    return "unknown";
+}
+
+std::vector<VoiceLifecycleRecord> DualSenseAudioDevice::RecentVoiceHistory() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return {impl_->history.begin(), impl_->history.end()};
+}
+
+void DualSenseAudioDevice::SetLifecycleHistoryLimit(std::size_t records) {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->historyLimit = records;
+    while (impl_->history.size() > records) impl_->history.pop_front();
+}
+
 void DualSenseAudioDevice::DropPending() {
     std::lock_guard<std::mutex> lock(impl_->mutex);
+    const auto now = NowUs();
+    for (const auto& voice : impl_->voices)
+        RecordVoiceEnd(impl_->history, impl_->historyLimit, voice, VoiceEndReason::Dropped, now);
     impl_->voices.clear();
 }
 
@@ -555,6 +604,11 @@ void RetireQuietestImpl(std::deque<AudioVoice>& voices, float rate, float fadeMs
 } // namespace
 
 bool DualSenseAudioDevice::Queue(const std::vector<float>& clip, int channel, float gain) {
+    return Queue(clip, channel, gain, 0);
+}
+
+bool DualSenseAudioDevice::Queue(const std::vector<float>& clip, int channel, float gain,
+                                 std::uint64_t correlationId) {
     auto& p = *impl_;
     if (!p.render || clip.empty()) return false;
     if (channel < 0 || channel >= static_cast<int>(p.report.channels)) {
@@ -578,6 +632,7 @@ bool DualSenseAudioDevice::Queue(const std::vector<float>& clip, int channel, fl
                                        [](const AudioVoice& a, const AudioVoice& b) {
                                            return a.sequence < b.sequence;
                                        });
+        RecordVoiceEnd(p.history, p.historyLimit, *oldest, VoiceEndReason::HardDropped, NowUs());
         p.voices.erase(oldest);
         ++p.stats.voicesEvicted;
     }
@@ -587,6 +642,8 @@ bool DualSenseAudioDevice::Queue(const std::vector<float>& clip, int channel, fl
     voice.channel = channel;
     voice.gain = std::isfinite(gain) ? std::clamp(gain, 0.0f, 4.0f) : 0.0f;
     voice.sequence = ++p.voiceSequence;
+    voice.correlationId = correlationId;
+    voice.queuedUs = NowUs();
     p.voices.push_back(voice);
     ++p.stats.voicesStarted;
     p.stats.maxConcurrentVoices = std::max(p.stats.maxConcurrentVoices, p.voices.size());
@@ -595,12 +652,17 @@ bool DualSenseAudioDevice::Queue(const std::vector<float>& clip, int channel, fl
 
 bool DualSenseAudioDevice::QueuePair(const std::vector<float>& clip, int left, int right,
                                      float gain, float balance) {
+    return QueuePair(clip, left, right, gain, balance, 0);
+}
+
+bool DualSenseAudioDevice::QueuePair(const std::vector<float>& clip, int left, int right,
+                                     float gain, float balance, std::uint64_t correlationId) {
     balance = std::isfinite(balance) ? std::clamp(balance, -1.0f, 1.0f) : 0.0f;
     const float l = gain * (balance > 0 ? 1.0f - balance : 1.0f);
     const float r = gain * (balance < 0 ? 1.0f + balance : 1.0f);
     bool ok = false;
-    if (left >= 0) ok = Queue(clip, left, l) || ok;
-    if (right >= 0) ok = Queue(clip, right, r) || ok;
+    if (left >= 0) ok = Queue(clip, left, l, correlationId) || ok;
+    if (right >= 0) ok = Queue(clip, right, r, correlationId) || ok;
     return ok;
 }
 
@@ -656,6 +718,10 @@ bool DualSenseAudioDevice::Pump() {
             // truncates another voice, so a new impact simply sums on top of
             // whatever is still ringing.
             if (voice.position >= clip.size()) continue;
+            // Stamped on the first sample that actually reaches a submitted
+            // buffer. This is a recordable stage; it is not the instant the
+            // actuator moved, which this process cannot observe.
+            if (voice.firstRenderedUs == 0) voice.firstRenderedUs = now;
             if (voice.duck > voice.duckTarget)
                 voice.duck = std::max(voice.duckTarget, voice.duck - voice.duckStep);
             frame[static_cast<std::size_t>(voice.channel)] +=
@@ -730,6 +796,8 @@ bool DualSenseAudioDevice::Pump() {
         const bool fadedOut = voice.duckTarget <= 0.0f && voice.duck <= 0.0f;
         if (!ended && !fadedOut) continue;
         if (ended) ++p.stats.voicesFinished;
+        RecordVoiceEnd(p.history, p.historyLimit, voice,
+                       ended ? VoiceEndReason::Completed : VoiceEndReason::RetiredAtCap, now);
         p.voices.erase(p.voices.begin() + static_cast<std::ptrdiff_t>(v));
     }
     return p.Check(p.render->ReleaseBuffer(available, 0), "ReleaseBuffer");

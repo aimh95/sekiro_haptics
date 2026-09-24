@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "name": "예제 A — cos(2t)·sin(460t)",
+  "masterGain": 1.0,
+  "saturationCeiling": 0.0,
+  "lengthMs": 400.0,
+  "speaker": {
+    "path": "",
+    "loaded": false,
+    "enabled": true,
+    "gain": 1.0,
+    "offsetMs": 0.0,
+    "channel": 1,
+    "frames": 0,
+    "durationMs": 0.0
+  },
+  "layers": [
+    {
+      "name": "A",
+      "muted": false,
+      "solo": false,
+      "startMs": 0.0,
+      "durationMs": 400.0,
+      "waveform": "formula",
+      "frequencyHz": 60.0,
+      "frequencyEndHz": 200.0,
+      "modulationHz": 8.0,
+      "modulationDepth": 1.0,
+      "decayPerSecond": 40.0,
+      "amplitude": 0.8,
+      "gainDb": 0.0,
+      "startPhaseDeg": 0.0,
+      "leftGain": 1.0,
+      "rightGain": 1.0,
+      "envelopeEnabled": false,
+      "attackMs": 5.0,
+      "holdMs": 0.0,
+      "decayMs": 30.0,
+      "sustain": 0.6,
+      "releaseMs": 40.0,
+      "formula": "cos(2*t)*sin(460*t)",
+      "t0Seconds": 0.05,
+      "formulaTimeFromLayerStart": false
+    }
+  ],
+  "note": "수식 편집기 예제. 괄호 안은 라디안이라 sin(460*t) 는 460 Hz 가 아니라 약 73 Hz 입니다.",
+  "designStatus": "design_candidate_not_hand_verified",
+  "output": {
+    "endpointId": null,
+    "hapticLeft": null,
+    "hapticRight": null,
+    "sampleRateHz": 48000
+  },
+  "analysis": {
+    "fftSize": 2048,
+    "window": "hann",
+    "startFrame": 0,
+    "unit": "PCM 진폭"
+  }
+}

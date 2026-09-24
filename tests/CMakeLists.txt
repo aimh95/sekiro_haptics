@@ -52,6 +52,24 @@ add_executable(sekiro_haptics_tests
     test_rising_edge_detector.cpp
     test_guard_outcome_event_detector.cpp
     test_guard_cue.cpp
+    # Adaptive-trigger encoding, HID output-state composition, and effect
+    # lifetime. Fake-transport only -- no device is touched.
+    test_adaptive_trigger.cpp
+    test_adaptive_trigger_runtime.cpp
+    # Extended presets (v1 and v2 files) and the integrated output runtime.
+    test_output_preset.cpp
+    test_output_runtime.cpp
+    test_prosthetic_trigger_policy.cpp
+    test_wire_action_detector.cpp
+    test_prosthetic_action_detector.cpp
+    test_wire_prep_policy.cpp
+    # The sine burst behind the game-free haptic bench. Pure arithmetic,
+    # so it runs anywhere the rest of this binary does.
+    test_tone_burst.cpp
+    # The waveform workbench: the bounded formula evaluator, and the
+    # multi-layer renderer that puts every layer on one sample clock.
+    test_expression.cpp
+    test_layered_preset.cpp
     test_sekiro_combat_capture_integration.cpp
 )
 target_include_directories(sekiro_haptics_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -60,9 +78,24 @@ target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics)
 target_compile_definitions(sekiro_haptics_tests PRIVATE
     SH_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
+# The shipped config directory, so a test can load the file that is actually
+# on disk rather than a copy that could drift away from it.
+target_compile_definitions(sekiro_haptics_tests PRIVATE
+    SH_REPO_CONFIG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../config")
+
 if(TARGET sekiro_haptics_dualsense_transport)
     target_sources(sekiro_haptics_tests PRIVATE test_dualsense_transport.cpp)
     target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics_dualsense_transport)
+endif()
+
+# Windows-only: the blade waveforms are decoded through Media Foundation, and
+# the test reads the shipped files rather than a copy, so a change to either
+# the decode or the asset shows up here instead of by hand on the device.
+if(TARGET sekiro_haptics_windows_audio)
+    target_sources(sekiro_haptics_tests PRIVATE test_blade_pcm_assets.cpp)
+    target_link_libraries(sekiro_haptics_tests PRIVATE sekiro_haptics_windows_audio)
+    target_compile_definitions(sekiro_haptics_tests PRIVATE
+        SH_BLADE_PCM_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../docs/astra/assets/sekiro_pcm_v1/wav")
 endif()
 
 # Win32-only: the real Win32ProcessReader/ExecutableIdentity tests, and

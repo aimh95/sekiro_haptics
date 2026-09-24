@@ -21,6 +21,25 @@ add_library(sekiro_haptics STATIC
     src/FeedbackOutput.cpp
     src/ActionScript.cpp
     src/GuardCue.cpp
+    # One sine burst for the game-free haptic bench. Pure arithmetic --
+    # no device, no Windows API -- so it is unit-tested like any other
+    # decision in this library.
+    src/lab/ToneBurst.cpp
+    # The waveform workbench: a bounded formula evaluator and the
+    # multi-layer renderer that puts every layer on one sample clock.
+    src/lab/Expression.cpp
+    src/lab/LayeredPreset.cpp
+    # Which R2 preparation resistance belongs to the selected prosthetic.
+    # Pure decision logic -- no device, no process access.
+    src/ProstheticTriggerPolicy.cpp
+    # When L2 should hold a catch for the next grapple.
+    src/WirePrepPolicy.cpp
+    # DualSense adaptive triggers: effect encoding, the single owner of HID
+    # output state, and effect lifetime. OS-independent -- these depend only
+    # on IDualSenseTransport, so they build and are tested without hardware.
+    src/dualsense/AdaptiveTrigger.cpp
+    src/dualsense/DualSenseOutputState.cpp
+    src/dualsense/AdaptiveTriggerRuntime.cpp
     src/Json.cpp
     src/events/ManualLabelEventDetector.cpp
     src/signals/IGameSignalSource.cpp
@@ -28,6 +47,12 @@ add_library(sekiro_haptics STATIC
     src/signals/VectorSignalSource.cpp
     src/presets/PresetRepository.cpp
     src/presets/MappingRepository.cpp
+    # Preset representation covering PCM haptics, speaker, adaptive triggers
+    # and legacy rumble together, plus the event -> mapping -> preset ->
+    # output runtime. Both OS-independent and hardware-free.
+    src/presets/OutputPreset.cpp
+    src/presets/OutputPresetRepository.cpp
+    src/runtime/OutputRuntime.cpp
     src/replay/TraceJsonl.cpp
     src/replay/TraceMetadata.cpp
     src/replay/TraceValidator.cpp
@@ -71,6 +96,16 @@ add_library(sekiro_haptics STATIC
     # carrying the two liveness/ownership corrections from DEFLECT_STATUS.md 7.8.
     src/process/SekiroPlayerGuardReader.cpp
     src/process/SekiroEnemyGuardReader.cpp
+    # Selected-prosthetic reader (equipped slot array + selected index).
+    # Selection STATE only -- it reports no use, shot or hit.
+    src/process/SekiroProstheticReader.cpp
+    # Wire-action start/end reader + detector. Observed field and the three
+    # negative controls it had to pass are documented in the header.
+    src/process/SekiroWireActionReader.cpp
+    # Prosthetic USE, from the action the game requested (ready vs attack).
+    # The selection reader above says what is equipped; this says what was
+    # just done with it. Observations and negative controls in the header.
+    src/process/SekiroProstheticActionReader.cpp
 )
 target_include_directories(sekiro_haptics PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -100,7 +135,11 @@ if(WIN32)
     add_library(sekiro_haptics_windows_audio STATIC
         src/WasapiSpeakerOutput.cpp
         src/DualSenseAudioDevice.cpp
-        src/AudioClipLoader.cpp)
+        src/AudioClipLoader.cpp
+        # IPcmOutputSink over the real mixer. Lives here rather than in the
+        # core library because it is the one piece of the output runtime that
+        # depends on DualSenseAudioDevice.
+        src/runtime/DualSenseAudioPcmSink.cpp)
     # ksuser carries the KSDATAFORMAT_SUBTYPE_* GUIDs. MSVC pulls them in via
     # uuid.lib, but MinGW keeps them in a separate import library.
     # mf/mfplat/mfreadwrite: Media Foundation, already part of Windows -- used to
@@ -178,6 +217,15 @@ if(SEKIRO_HAPTICS_BUILD_APPS)
         add_subdirectory(apps/sekiro_signal_probe)
     endif()
     if(TARGET sekiro_haptics_dualsense_transport)
+        # Adaptive-trigger bench: no game, no audio endpoint, HID only.
+        if(WIN32)
+            add_subdirectory(apps/trigger_lab)
+            # PCM haptic bench: audio endpoint + the verified haptic channels,
+            # driven by tools/haptic_lab_gui.py over stdin/stdout.
+            if(TARGET sekiro_haptics_windows_audio)
+                add_subdirectory(apps/haptic_lab)
+            endif()
+        endif()
         add_subdirectory(apps/dualsense_rumble_test)
         add_subdirectory(apps/replay_hardware)
     endif()

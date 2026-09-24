@@ -349,6 +349,12 @@ apply only to the fetched HIDAPI build, not to this repository.
 
 ## Explicitly out of scope (this stage)
 
+> **Superseded in part by docs/12-output-runtime.md (2026-09-20).** Adaptive
+> triggers, a preset representation covering PCM haptics / speaker / triggers /
+> legacy rumble, and the GameEvent -> Mapping -> Preset -> Output runtime now
+> exist. LED and microphone fields are still untouched, and `BuildRumbleReport`
+> itself is unchanged. The paragraph below describes the state before that.
+
 - **Adaptive-trigger / LED / audio packet fields.** `BuildRumbleReport`
   covers rumble only; every other DualSense output-report field (adaptive
   triggers, LEDs, mic mute, speaker) is left zeroed/untouched. No packet

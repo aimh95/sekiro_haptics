@@ -1,0 +1,1136 @@
+{
+  "designSchemaVersion": 1,
+  "sampleRateHz": 48000,
+  "status": "authored_candidate_not_hardware_validated",
+  "channels": [
+    "haptic_left",
+    "haptic_right"
+  ],
+  "recipes": [
+    {
+      "id": "blade_deflect",
+      "labelKo": "튕겨내기: 짧은 접촉과 가는 여운",
+      "durationMs": 120,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 230,
+          "amplitude": 0.48,
+          "durationMs": 22,
+          "startMs": 0,
+          "attackMs": 1.0,
+          "releaseMs": 5,
+          "decayMs": 7,
+          "gainsLR": [
+            0.95,
+            1
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 170,
+          "amplitude": 0.38,
+          "durationMs": 60,
+          "startMs": 0,
+          "attackMs": 1.5,
+          "releaseMs": 10,
+          "decayMs": 18,
+          "gainsLR": [
+            0.95,
+            1
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 275,
+          "amplitude": 0.15,
+          "durationMs": 114,
+          "startMs": 6,
+          "attackMs": 2,
+          "releaseMs": 18,
+          "decayMs": 35,
+          "gainsLR": [
+            0.95,
+            1
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 335,
+          "amplitude": 0.06,
+          "durationMs": 100,
+          "startMs": 10,
+          "attackMs": 3,
+          "releaseMs": 20,
+          "decayMs": 30,
+          "gainsLR": [
+            0.95,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "blade_block",
+      "labelKo": "일반 방어: 무게를 받아내는 둔탁함",
+      "durationMs": 165,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 105,
+          "amplitude": 0.5,
+          "durationMs": 150,
+          "startMs": 0,
+          "attackMs": 5,
+          "releaseMs": 25,
+          "decayMs": 45,
+          "gainsLR": [
+            0.95,
+            1
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 165,
+          "amplitude": 0.24,
+          "durationMs": 80,
+          "startMs": 0,
+          "attackMs": 3,
+          "releaseMs": 15,
+          "decayMs": 25,
+          "gainsLR": [
+            0.95,
+            1
+          ]
+        },
+        {
+          "kind": "grain",
+          "bandHz": [
+            85,
+            145
+          ],
+          "amplitude": 0.1,
+          "durationMs": 150,
+          "startMs": 10,
+          "attackMs": 6,
+          "releaseMs": 30,
+          "decayMs": 55,
+          "gainsLR": [
+            0.95,
+            1
+          ],
+          "seed": 2
+        }
+      ]
+    },
+    {
+      "id": "shuriken_use",
+      "labelKo": "수리검 발사: 작은 걸림이 풀리는 손맛",
+      "durationMs": 80,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            220,
+            150
+          ],
+          "amplitude": 0.46,
+          "durationMs": 40,
+          "startMs": 0,
+          "attackMs": 1.5,
+          "releaseMs": 7,
+          "decayMs": 15,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 175,
+          "amplitude": 0.18,
+          "durationMs": 75,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 14,
+          "decayMs": 24,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shuriken_charge_loop",
+      "labelKo": "축적 수리검: 실제 차지 중에만 약한 회전",
+      "durationMs": 1000,
+      "loop": true,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 170,
+          "amplitude": 0.14,
+          "durationMs": 1000,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 8,
+          "decayMs": null,
+          "gainsLR": [
+            1,
+            0.65
+          ],
+          "amHz": 7,
+          "amDepth": 0.65
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 240,
+          "amplitude": 0.05,
+          "durationMs": 1000,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 8,
+          "decayMs": null,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spear_use",
+      "labelKo": "창 찌르기: 앞으로 밀리는 길쭉한 질감",
+      "durationMs": 145,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            120,
+            175
+          ],
+          "amplitude": 0.4,
+          "durationMs": 100,
+          "startMs": 0,
+          "attackMs": 8,
+          "releaseMs": 20,
+          "decayMs": 50,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 170,
+          "amplitude": 0.18,
+          "durationMs": 140,
+          "startMs": 0,
+          "attackMs": 5,
+          "releaseMs": 30,
+          "decayMs": 60,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spear_pull",
+      "labelKo": "창 끌어오기: 뒤늦게 걸려 당겨지는 반동",
+      "durationMs": 135,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            140,
+            95
+          ],
+          "amplitude": 0.43,
+          "durationMs": 130,
+          "startMs": 0,
+          "attackMs": 5,
+          "releaseMs": 20,
+          "decayMs": 45,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 205,
+          "amplitude": 0.16,
+          "durationMs": 65,
+          "startMs": 15,
+          "attackMs": 2,
+          "releaseMs": 12,
+          "decayMs": 20,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "axe_use",
+      "labelKo": "도끼 휘두르기: 질량이 움직이는 시작",
+      "durationMs": 185,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            95,
+            150
+          ],
+          "amplitude": 0.32,
+          "durationMs": 180,
+          "startMs": 0,
+          "attackMs": 10,
+          "releaseMs": 30,
+          "decayMs": 65,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 170,
+          "amplitude": 0.13,
+          "durationMs": 115,
+          "startMs": 0,
+          "attackMs": 7,
+          "releaseMs": 22,
+          "decayMs": 45,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "axe_impact",
+      "labelKo": "도끼 명중: 확인된 충돌의 무거운 마무리",
+      "durationMs": 180,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 90,
+          "amplitude": 0.52,
+          "durationMs": 175,
+          "startMs": 0,
+          "attackMs": 3,
+          "releaseMs": 30,
+          "decayMs": 50,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 160,
+          "amplitude": 0.29,
+          "durationMs": 90,
+          "startMs": 0,
+          "attackMs": 1.5,
+          "releaseMs": 16,
+          "decayMs": 25,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "grain",
+          "bandHz": [
+            100,
+            220
+          ],
+          "amplitude": 0.12,
+          "durationMs": 65,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 15,
+          "decayMs": 20,
+          "gainsLR": [
+            1,
+            0.65
+          ],
+          "seed": 3
+        }
+      ]
+    },
+    {
+      "id": "firecracker_use",
+      "labelKo": "폭죽 사용: 하나의 효과 안에서 흩어지는 짧은 파열",
+      "durationMs": 300,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 185,
+          "amplitude": 0.4,
+          "durationMs": 42,
+          "startMs": 0,
+          "attackMs": 1.5,
+          "releaseMs": 8,
+          "decayMs": 12,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 105,
+          "amplitude": 0.12,
+          "durationMs": 58,
+          "startMs": 0,
+          "attackMs": 3,
+          "releaseMs": 12,
+          "decayMs": 20,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 210,
+          "amplitude": 0.33,
+          "durationMs": 42,
+          "startMs": 38,
+          "attackMs": 1.5,
+          "releaseMs": 8,
+          "decayMs": 12,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 105,
+          "amplitude": 0.12,
+          "durationMs": 58,
+          "startMs": 38,
+          "attackMs": 3,
+          "releaseMs": 12,
+          "decayMs": 20,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 165,
+          "amplitude": 0.38,
+          "durationMs": 42,
+          "startMs": 89,
+          "attackMs": 1.5,
+          "releaseMs": 8,
+          "decayMs": 12,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 105,
+          "amplitude": 0.12,
+          "durationMs": 58,
+          "startMs": 89,
+          "attackMs": 3,
+          "releaseMs": 12,
+          "decayMs": 20,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 235,
+          "amplitude": 0.29,
+          "durationMs": 42,
+          "startMs": 146,
+          "attackMs": 1.5,
+          "releaseMs": 8,
+          "decayMs": 12,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 105,
+          "amplitude": 0.12,
+          "durationMs": 58,
+          "startMs": 146,
+          "attackMs": 3,
+          "releaseMs": 12,
+          "decayMs": 20,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 190,
+          "amplitude": 0.35,
+          "durationMs": 42,
+          "startMs": 222,
+          "attackMs": 1.5,
+          "releaseMs": 8,
+          "decayMs": 12,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 105,
+          "amplitude": 0.12,
+          "durationMs": 58,
+          "startMs": 222,
+          "attackMs": 3,
+          "releaseMs": 12,
+          "decayMs": 20,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flame_use",
+      "labelKo": "화통 점화: 낮은 부풀음과 거친 분출",
+      "durationMs": 160,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            95,
+            155
+          ],
+          "amplitude": 0.39,
+          "durationMs": 150,
+          "startMs": 0,
+          "attackMs": 4,
+          "releaseMs": 25,
+          "decayMs": 50,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "grain",
+          "bandHz": [
+            100,
+            260
+          ],
+          "amplitude": 0.25,
+          "durationMs": 155,
+          "startMs": 0,
+          "attackMs": 5,
+          "releaseMs": 25,
+          "decayMs": 65,
+          "gainsLR": [
+            1,
+            0.65
+          ],
+          "seed": 4
+        }
+      ]
+    },
+    {
+      "id": "flame_sustain_loop",
+      "labelKo": "화통 지속 분사: 출렁이는 거친 표면",
+      "durationMs": 1000,
+      "loop": true,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 110,
+          "amplitude": 0.19,
+          "durationMs": 1000,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 8,
+          "decayMs": null,
+          "gainsLR": [
+            1,
+            0.65
+          ],
+          "amHz": 17,
+          "amDepth": 0.6
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 173,
+          "amplitude": 0.13,
+          "durationMs": 1000,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 8,
+          "decayMs": null,
+          "gainsLR": [
+            1,
+            0.65
+          ],
+          "amHz": 29,
+          "amDepth": 0.45
+        },
+        {
+          "kind": "grain",
+          "bandHz": [
+            90,
+            260
+          ],
+          "amplitude": 0.2,
+          "durationMs": 1000,
+          "startMs": 0,
+          "attackMs": 4,
+          "releaseMs": 15,
+          "decayMs": null,
+          "gainsLR": [
+            1,
+            0.65
+          ],
+          "seed": 5
+        }
+      ]
+    },
+    {
+      "id": "sabimaru_use",
+      "labelKo": "사비마루 사용 시작: 가벼운 뽑힘",
+      "durationMs": 85,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            175,
+            215
+          ],
+          "amplitude": 0.27,
+          "durationMs": 70,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 12,
+          "decayMs": 24,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 145,
+          "amplitude": 0.14,
+          "durationMs": 80,
+          "startMs": 0,
+          "attackMs": 3,
+          "releaseMs": 16,
+          "decayMs": 28,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sabimaru_cut",
+      "labelKo": "사비마루 개별 베기: 빠른 작은 절단",
+      "durationMs": 70,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            225,
+            145
+          ],
+          "amplitude": 0.4,
+          "durationMs": 52,
+          "startMs": 0,
+          "attackMs": 1.5,
+          "releaseMs": 10,
+          "decayMs": 17,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 175,
+          "amplitude": 0.13,
+          "durationMs": 65,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 14,
+          "decayMs": 24,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "umbrella_use",
+      "labelKo": "우산 펼치기: 철판의 펼침과 걸림",
+      "durationMs": 165,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            125,
+            180
+          ],
+          "amplitude": 0.34,
+          "durationMs": 130,
+          "startMs": 0,
+          "attackMs": 4,
+          "releaseMs": 20,
+          "decayMs": 50,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 235,
+          "amplitude": 0.21,
+          "durationMs": 52,
+          "startMs": 22,
+          "attackMs": 1.5,
+          "releaseMs": 10,
+          "decayMs": 17,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 155,
+          "amplitude": 0.14,
+          "durationMs": 125,
+          "startMs": 35,
+          "attackMs": 4,
+          "releaseMs": 22,
+          "decayMs": 42,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "umbrella_impact",
+      "labelKo": "우산으로 받은 충돌: 넓고 낮은 금속 울림",
+      "durationMs": 150,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 125,
+          "amplitude": 0.38,
+          "durationMs": 145,
+          "startMs": 0,
+          "attackMs": 3,
+          "releaseMs": 25,
+          "decayMs": 45,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 205,
+          "amplitude": 0.29,
+          "durationMs": 85,
+          "startMs": 0,
+          "attackMs": 1.5,
+          "releaseMs": 15,
+          "decayMs": 25,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 280,
+          "amplitude": 0.09,
+          "durationMs": 110,
+          "startMs": 15,
+          "attackMs": 3,
+          "releaseMs": 20,
+          "decayMs": 35,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mist_raven_use",
+      "labelKo": "안개 까마귀 준비: 가볍게 퍼지는 결",
+      "durationMs": 140,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 165,
+          "amplitude": 0.16,
+          "durationMs": 125,
+          "startMs": 0,
+          "attackMs": 12,
+          "releaseMs": 25,
+          "decayMs": 65,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "grain",
+          "bandHz": [
+            140,
+            260
+          ],
+          "amplitude": 0.16,
+          "durationMs": 135,
+          "startMs": 0,
+          "attackMs": 15,
+          "releaseMs": 30,
+          "decayMs": 75,
+          "gainsLR": [
+            1,
+            0.65
+          ],
+          "seed": 6
+        }
+      ]
+    },
+    {
+      "id": "mist_raven_vanish",
+      "labelKo": "안개 까마귀 회피 발동: 감각이 빠져나감",
+      "durationMs": 180,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            210,
+            110
+          ],
+          "amplitude": 0.28,
+          "durationMs": 170,
+          "startMs": 0,
+          "attackMs": 5,
+          "releaseMs": 35,
+          "decayMs": 55,
+          "gainsLR": [
+            1,
+            0.4
+          ],
+          "endGainsLR": [
+            0.35,
+            1
+          ]
+        },
+        {
+          "kind": "grain",
+          "bandHz": [
+            130,
+            250
+          ],
+          "amplitude": 0.15,
+          "durationMs": 175,
+          "startMs": 0,
+          "attackMs": 12,
+          "releaseMs": 35,
+          "decayMs": 65,
+          "gainsLR": [
+            1,
+            0.65
+          ],
+          "seed": 7
+        }
+      ]
+    },
+    {
+      "id": "mist_raven_return",
+      "labelKo": "안개 까마귀 복귀: 짧게 다시 잡힘",
+      "durationMs": 110,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 175,
+          "amplitude": 0.35,
+          "durationMs": 105,
+          "startMs": 0,
+          "attackMs": 3,
+          "releaseMs": 20,
+          "decayMs": 32,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 250,
+          "amplitude": 0.12,
+          "durationMs": 65,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 13,
+          "decayMs": 20,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "divine_abduction_use",
+      "labelKo": "행방불명: 한쪽에서 다른 쪽으로 부드럽게 흐름",
+      "durationMs": 280,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            120,
+            210
+          ],
+          "amplitude": 0.31,
+          "durationMs": 270,
+          "startMs": 0,
+          "attackMs": 15,
+          "releaseMs": 40,
+          "decayMs": 130,
+          "gainsLR": [
+            1,
+            0.4
+          ],
+          "endGainsLR": [
+            0.45,
+            1
+          ]
+        },
+        {
+          "kind": "grain",
+          "bandHz": [
+            110,
+            210
+          ],
+          "amplitude": 0.16,
+          "durationMs": 270,
+          "startMs": 0,
+          "attackMs": 18,
+          "releaseMs": 40,
+          "decayMs": 140,
+          "gainsLR": [
+            1,
+            0.4
+          ],
+          "seed": 8,
+          "endGainsLR": [
+            0.45,
+            1
+          ],
+          "amHz": 11,
+          "amDepth": 0.5
+        }
+      ]
+    },
+    {
+      "id": "finger_whistle_use",
+      "labelKo": "손가락 피리: 약하게 살아 있는 맥놀이",
+      "durationMs": 380,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 210,
+          "amplitude": 0.16,
+          "durationMs": 375,
+          "startMs": 0,
+          "attackMs": 25,
+          "releaseMs": 65,
+          "decayMs": 210,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 228,
+          "amplitude": 0.13,
+          "durationMs": 375,
+          "startMs": 0,
+          "attackMs": 25,
+          "releaseMs": 65,
+          "decayMs": 210,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sen_throw_use",
+      "labelKo": "돈 던지기: 작은 금속 알갱이의 분산",
+      "durationMs": 125,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": 205,
+          "amplitude": 0.3,
+          "durationMs": 45,
+          "startMs": 0,
+          "attackMs": 1.5,
+          "releaseMs": 8,
+          "decayMs": 14,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 250,
+          "amplitude": 0.26,
+          "durationMs": 48,
+          "startMs": 17,
+          "attackMs": 1.5,
+          "releaseMs": 8,
+          "decayMs": 15,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 180,
+          "amplitude": 0.24,
+          "durationMs": 55,
+          "startMs": 39,
+          "attackMs": 2,
+          "releaseMs": 10,
+          "decayMs": 18,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 155,
+          "amplitude": 0.14,
+          "durationMs": 115,
+          "startMs": 0,
+          "attackMs": 3,
+          "releaseMs": 20,
+          "decayMs": 35,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lazulite_shuriken_use",
+      "labelKo": "유리 수리검: 기본 발사 위로 가는 여운",
+      "durationMs": 120,
+      "loop": false,
+      "layers": [
+        {
+          "kind": "tone",
+          "frequencyHz": [
+            220,
+            150
+          ],
+          "amplitude": 0.46,
+          "durationMs": 40,
+          "startMs": 0,
+          "attackMs": 1.5,
+          "releaseMs": 7,
+          "decayMs": 15,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 175,
+          "amplitude": 0.18,
+          "durationMs": 75,
+          "startMs": 0,
+          "attackMs": 2,
+          "releaseMs": 14,
+          "decayMs": 24,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        },
+        {
+          "kind": "tone",
+          "frequencyHz": 285,
+          "amplitude": 0.11,
+          "durationMs": 110,
+          "startMs": 6,
+          "attackMs": 3,
+          "releaseMs": 22,
+          "decayMs": 38,
+          "gainsLR": [
+            1,
+            0.65
+          ]
+        }
+      ]
+    }
+  ]
+}

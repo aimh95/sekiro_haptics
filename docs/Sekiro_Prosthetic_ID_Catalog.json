@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 1,
+  "kind": "reference_catalog_not_runtime_configuration",
+  "catalogNamespace": "EquipParamWeapon parameter row ID",
+  "entryCount": 40,
+  "familyCount": 10,
+  "scope": "40 normal prosthetic tool equip rows in the referenced tables, including upgrades; excludes virtual/locked/internal weapon rows and arbitrary mod additions",
+  "sources": [
+    {
+      "id": "paramdex",
+      "kind": "public_modding_reference",
+      "revision": "ff7245e524329bc3eab00036723d2bd53384cedf",
+      "url": "https://github.com/soulsmods/Paramdex/blob/ff7245e524329bc3eab00036723d2bd53384cedf/SDT/Names/EquipParamWeapon.txt"
+    },
+    {
+      "id": "practice_ct",
+      "kind": "public_author_implementation",
+      "revision": "328065da6dc3c5c9138cd31030791804e8e14e4e",
+      "url": "https://github.com/ElaDiDu/Sekiro-Practice-CT/blob/328065da6dc3c5c9138cd31030791804e8e14e4e/Ela_Sekiro_Table.CT"
+    },
+    {
+      "id": "item_id_layout",
+      "kind": "public_reverse_engineering_structure",
+      "revision": "59fbd3b3b7daaf14aca47c9f73530493dba6bc79",
+      "url": "https://github.com/vswarte/fromsoftware-rs/blob/59fbd3b3b7daaf14aca47c9f73530493dba6bc79/crates/sekiro/src/sprj/item_id.rs"
+    }
+  ],
+  "observedField": {
+    "source": "user_report",
+    "objectLabel": "EquipMagicData",
+    "offsetHex": "0xf2",
+    "duplicateOffsetHex": "0x232",
+    "declaredReadType": "u16",
+    "samplesDecimal": [
+      2449,
+      2701
+    ],
+    "mappingStatus": "unresolved",
+    "mappedEquipParamWeaponIds": null,
+    "exeSha256": null,
+    "notes": [
+      "Do not index this catalog with the two observed u16 values.",
+      "The full field width, namespace and pointer path have not been verified.",
+      "Repeated equal values and equip-switch correlation do not establish the field layout."
+    ]
+  },
+  "entries": [
+    {
+      "equipParamWeaponId": 70000,
+      "nameEn": "Loaded Shuriken",
+      "family": "shuriken",
+      "familyLabelKo": "수리검·표창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 70100,
+      "nameEn": "Spinning Shuriken",
+      "family": "shuriken",
+      "familyLabelKo": "수리검·표창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 70200,
+      "nameEn": "Gouging Top",
+      "family": "shuriken",
+      "familyLabelKo": "수리검·표창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 70300,
+      "nameEn": "Phantom Kunai",
+      "family": "shuriken",
+      "familyLabelKo": "수리검·표창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 70400,
+      "nameEn": "Sen Throw",
+      "family": "shuriken",
+      "familyLabelKo": "수리검·표창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 70500,
+      "nameEn": "Lazulite Shuriken",
+      "family": "shuriken",
+      "familyLabelKo": "수리검·표창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 71000,
+      "nameEn": "Shinobi Firecracker",
+      "family": "firecracker",
+      "familyLabelKo": "폭죽",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 71100,
+      "nameEn": "Spring-load Firecracker",
+      "family": "firecracker",
+      "familyLabelKo": "폭죽",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 71200,
+      "nameEn": "Long Spark",
+      "family": "firecracker",
+      "familyLabelKo": "폭죽",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 71300,
+      "nameEn": "Purple Fume Spark",
+      "family": "firecracker",
+      "familyLabelKo": "폭죽",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 72000,
+      "nameEn": "Flame Vent",
+      "family": "flame_vent",
+      "familyLabelKo": "화통",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 72100,
+      "nameEn": "Spring-load Flame Vent",
+      "family": "flame_vent",
+      "familyLabelKo": "화통",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 72200,
+      "nameEn": "Okinaga's Flame Vent",
+      "family": "flame_vent",
+      "familyLabelKo": "화통",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 72300,
+      "nameEn": "Lazulite Sacred Flame",
+      "family": "flame_vent",
+      "familyLabelKo": "화통",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 73000,
+      "nameEn": "Loaded Axe",
+      "family": "axe",
+      "familyLabelKo": "장치 도끼",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 73100,
+      "nameEn": "Spring-load Axe",
+      "family": "axe",
+      "familyLabelKo": "장치 도끼",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 73200,
+      "nameEn": "Sparking Axe",
+      "family": "axe",
+      "familyLabelKo": "장치 도끼",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 73300,
+      "nameEn": "Lazulite Axe",
+      "family": "axe",
+      "familyLabelKo": "장치 도끼",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 74000,
+      "nameEn": "Mist Raven",
+      "family": "mist_raven",
+      "familyLabelKo": "안개 까마귀",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 74100,
+      "nameEn": "Aged Feather Mist Raven",
+      "family": "mist_raven",
+      "familyLabelKo": "안개 까마귀",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 74200,
+      "nameEn": "Great Feather Mist Raven",
+      "family": "mist_raven",
+      "familyLabelKo": "안개 까마귀",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 75000,
+      "nameEn": "Sabimaru",
+      "family": "sabimaru",
+      "familyLabelKo": "사비마루",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 75100,
+      "nameEn": "Improved Sabimaru",
+      "family": "sabimaru",
+      "familyLabelKo": "사비마루",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 75200,
+      "nameEn": "Piercing Sabimaru",
+      "family": "sabimaru",
+      "familyLabelKo": "사비마루",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 75300,
+      "nameEn": "Lazulite Sabimaru",
+      "family": "sabimaru",
+      "familyLabelKo": "사비마루",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 76000,
+      "nameEn": "Loaded Umbrella",
+      "family": "umbrella",
+      "familyLabelKo": "장치 우산",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 76100,
+      "nameEn": "Loaded Umbrella - Magnet",
+      "family": "umbrella",
+      "familyLabelKo": "장치 우산",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 76200,
+      "nameEn": "Suzaku's Lotus Umbrella",
+      "family": "umbrella",
+      "familyLabelKo": "장치 우산",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 76300,
+      "nameEn": "Phoenix's Lilac Umbrella",
+      "family": "umbrella",
+      "familyLabelKo": "장치 우산",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 77000,
+      "nameEn": "Divine Abduction",
+      "family": "divine_abduction",
+      "familyLabelKo": "행방불명",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 77100,
+      "nameEn": "Double Divine Abduction",
+      "family": "divine_abduction",
+      "familyLabelKo": "행방불명",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 77200,
+      "nameEn": "Golden Vortex",
+      "family": "divine_abduction",
+      "familyLabelKo": "행방불명",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 78000,
+      "nameEn": "Loaded Spear",
+      "family": "spear",
+      "familyLabelKo": "장치 창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 78100,
+      "nameEn": "Loaded Spear Thrust type",
+      "family": "spear",
+      "familyLabelKo": "장치 창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 78200,
+      "nameEn": "Loaded Spear Cleave type",
+      "family": "spear",
+      "familyLabelKo": "장치 창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 78300,
+      "nameEn": "Spiral Spear",
+      "family": "spear",
+      "familyLabelKo": "장치 창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 78400,
+      "nameEn": "Leaping Flame",
+      "family": "spear",
+      "familyLabelKo": "장치 창",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 79000,
+      "nameEn": "Finger Whistle",
+      "family": "finger_whistle",
+      "familyLabelKo": "손가락 피리",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 79100,
+      "nameEn": "Mountain Echo",
+      "family": "finger_whistle",
+      "familyLabelKo": "손가락 피리",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    },
+    {
+      "equipParamWeaponId": 79200,
+      "nameEn": "Malcontent",
+      "family": "finger_whistle",
+      "familyLabelKo": "손가락 피리",
+      "referenceStatus": "matched_in_two_public_sources",
+      "runtimeValidated": false
+    }
+  ]
+}

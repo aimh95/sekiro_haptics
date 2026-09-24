@@ -125,17 +125,23 @@ $E = ".\build-hw\apps\guard_feedback\sekiro_guard_feedback.exe"
 & $E --channel-test --audio 6 --endpoint-volume 0.8
 
 # 촉감만 / 소리만 / 둘 다
-& $E --play alternate --count 6 --audio 6 --mode haptic  --haptic-left 2 --haptic-right 3
-& $E --play alternate --count 6 --audio 6 --mode speaker --speaker-channel 2
-& $E --play alternate --count 6 --audio 6 --mode both --speaker-channel 2 --haptic-left 2 --haptic-right 3
+#
+# 채널 인자를 주지 마라. config/guard_cues.json의 device 블록이 이 기계에서
+# 듣고 만져서 확정한 값(엔드포인트 6, 스피커 채널 1, 액추에이터 2/3)을 이미
+# 들고 있고, 인자가 없으면 그것을 쓴다. 특히 --speaker-channel 2는 틀렸다 --
+# 2는 왼쪽 보이스코일이고 내장 스피커는 1이다. 2로 보내면 클랭이 스피커가
+# 아니라 액추에이터로 가서 진동 밑에 묻힌다. 인자는 실험으로 덮어쓸 때만.
+& $E --play alternate --count 6 --mode haptic
+& $E --play alternate --count 6 --mode speaker
+& $E --play alternate --count 6 --mode both
 
 # 겹침 확인
-& $E --play mixed --audio 6 --mode haptic --haptic-left 2 --haptic-right 3 --interval-ms 500
-& $E --play mixed --audio 6 --mode haptic --haptic-left 2 --haptic-right 3 --interval-ms 200
-& $E --play mixed --audio 6 --mode haptic --haptic-left 2 --haptic-right 3 --interval-ms 100
+& $E --play mixed --mode haptic --interval-ms 500
+& $E --play mixed --mode haptic --interval-ms 200
+& $E --play mixed --mode haptic --interval-ms 100
 
-# 실제 게임 연동 (읽기 전용)
-& $E --live --pid <sekiro pid> --audio 6 --mode both --speaker-channel 2 --haptic-left 2 --haptic-right 3
+# 실제 게임 연동 (읽기 전용) -- 이것이 최종 실행 형태다
+& $E --live --pid (Get-Process sekiro).Id --enemy
 ```
 
 패턴: `deflect` / `block` / `alternate` / `repeat`(같은 종류 반복 후 반대) / `mixed`(패링2+방어2+패링).
@@ -864,9 +870,255 @@ enemy: deflect=? block=?  tracked=? rawPulseEdges=? nonZeroSamples=?
 - `pathChanges = 0` → 경로가 처음부터 맞았다. 1 이상이면 재탐색이 고쳐 준 것이고,
   그렇다면 2초 주기가 "초반에 안 되는" 구간을 얼마나 줄이는지가 다음 질문이다.
 
+### 14.3b 잔류 프로세스 해소 (2026-09-20)
+
+14.2의 링크 실패 원인이던 `sekiro_guard_feedback.exe`(pid 5392, 2026-09-19 14:33 시작)가
+그대로 살아 있었다. Sekiro는 실행 중이 아니었으므로 라이브 세션이 아니라 잔류물이었고,
+종료 후 링크가 정상화됐다. 같은 세션에서 `ctest`가 행(hang)으로 보이던 것도 코드 문제가
+아니라 `build-hw/tests/`에 MinGW 런타임 DLL(`libstdc++-6` / `libgcc_s_seh-1` /
+`libwinpthread-1`)이 없어 테스트 실행 파일이 `STATUS_ENTRYPOINT_NOT_FOUND`로 조용히
+죽던 것이었다(DEFLECT_EVIDENCE.json의 기록과 같은 증상). DLL을 함께 두자 4/4 · 667/667 통과.
+
+**14.2의 세 항목(적 재탐색 2초, `rawPulseEdges` 계측, `clipRaw`)은 여전히 게임과 함께
+실행된 적이 없다.** 링크가 막혀 있던 문제만 해소됐다.
+
+### 14.3c `clipRaw` 기본값이 잔향을 삼키고 있었다 (2026-09-20)
+
+14.3b로 링크가 풀리자 14.2의 3번(`clipRaw`)이 **처음 실행됐고, 곧바로 회귀였다.**
+사용자 보고: "어젠 소리가 잘 나던데 소리가 잘린다."
+
+실행 로그가 원인을 그대로 찍고 있었다:
+
+```
+deflect speaker cue: audio/generated/deflect_hit.wav (AS RECORDED, 66ms, 1 impacts, trim -18dB)
+```
+
+`AS RECORDED` 분기는 `NormalizePeak`과 `ExtendDecayTail`을 **둘 다 건너뛴다.** 그래서
+13절이 만든 잔향(386 / 486 ms)이 통째로 사라지고 정규화 안 된 66 ms 조각에 -18 dB만
+걸려 나갔다. 같은 채널에 실린 햅틱(peak 0.85) 밑에 묻혀 사실상 무음이었다.
+
+연쇄:
+
+1. `config/guard_cues.json`은 2026-09-19 14:31에 쓰였고 `clipRaw` 키가 **없다.**
+2. 그 뒤 `DefaultGuardCueConfig()`가 `clipRaw = true` + 원본 mp3 통째 재생으로 바뀌었다.
+3. 파서는 **키가 있을 때만** 덮어쓰므로 기본값 `true`가 새어 들어왔다.
+4. config가 `clipPath`(66 ms 슬라이스)와 `tailMs`는 덮어쓰는데 `clipRaw`만 못 덮으니
+   **슬라이스에 raw 모드**라는 최악의 조합이 만들어졌다.
+
+14.2는 이 항목을 "기본값은 꺼져 있다"고 적었다. **그 서술이 틀렸다** — 실행해 본 적이
+없어서 아무도 몰랐다.
+
+**수정**: `ReadSpeaker`에서 설정 파일이 자기 `clipPath`를 지정하면 `clipRaw`를 false로
+되돌린다. 파일이 `clipRaw`를 명시하면 그것이 이긴다. `clipRaw`는 짝지어진 clipPath와만
+의미가 있는 플래그이므로, 다른 클립을 가리키는 설정이 상속해서는 안 된다.
+
+회귀 테스트 3개(`GuardCue_AConfigWithItsOwnClipPathDoesNotInheritClipRaw` 외)를 추가했다.
+수정 후 `deflect 386ms / block 486ms`로 복귀.
+
 ### 14.4 아직 신호 자체가 답하지 못하는 것
 
 표창·폭죽처럼 칼이 아닌 공격, 적끼리의 교전, 여러 적 중 누구를 때렸는지 —
 `+0xE10` 하나로는 구분할 수 없다. 구분하려면 새 신호가 필요하다:
 적이 가드한 공격의 출처, 또는 플레이어의 공격 상태 플래그와의 시간 상관.
 어느 쪽도 아직 조사하지 않았다.
+
+
+## 15. 패리/방어 햅틱을 제작된 파형으로 (2026-09-22)
+
+`docs/astra/assets/sekiro_pcm_v1/`의 `blade_deflect.wav` / `blade_block.wav`를
+deflect·block의 **액추에이터 파형**으로 쓴다. 바뀐 것은 파형뿐이다 —
+cue id(`deflect.haptic` / `block.haptic`), 프리셋, 매핑, 어떤 이벤트가
+출력까지 오는지는 그대로다.
+
+### 15.1 2채널을 합치지 않는 이유
+
+이 두 파일은 `logicalChannels: [haptic_left, haptic_right]`, 즉 좌/우를 **다르게**
+쓴 한 쌍이다. 기존 로더는 모노 전용이어서 (MF에 1채널을 요구) 디코더가 두 채널을
+평균내 버렸을 것이고, 그러면 이 파일이 존재하는 이유인 좌우 차이가 그대로 사라진다.
+그래서:
+
+* `LoadAudioClipStereo()` — 기존 모노 디코드를 채널 수로 매개변수화하고, 2채널을
+  디인터리브해 돌려준다. 모노 경로는 같은 함수를 채널 1로 호출하므로 녹음 스피커
+  경로는 변하지 않는다.
+* `DualSenseAudioPcmSink::RegisterStereoCue()` — 한 cue가 좌/우 파형을 따로 들고,
+  `QueueHaptic`이 왼쪽 파형을 왼쪽 채널에, 오른쪽 파형을 오른쪽 채널에 건다.
+  모노 cue가 원래 두 voice가 되던 것과 voice 수는 같다(`layers=2/2`, `voices=3`).
+  balance 분배식은 `QueuePair`의 것을 그대로 써서, 스테레오 cue와 모노 cue가
+  프리셋의 balance에 같은 식으로 답한다.
+
+측정된 좌우 피크는 deflect `[0.677, 0.713]`, block `[0.475, 0.500]`으로
+`validation.json`과 일치한다(`test_blade_pcm_assets.cpp`가 실제 파일을 읽어 확인).
+
+### 15.2 레벨 — 팩이 제안한 0.6은 실기에서 너무 약했다
+
+팩은 `initialOutputGain: 0.6`을 적어 뒀다. 실기에서 **명백히 약했고**, 측정이 이유를
+말해준다.
+
+| | 합성 파형 | 제작 파형 @0.6 |
+|---|---|---|
+| 제출 peak | 0.85 | 0.41 |
+| 제출 rms | 0.191 | 0.060 |
+| 길이 (deflect) | 378 ms | 120 ms |
+
+피크는 절반인데 **rms는 1/3**이고 길이도 1/3이다. 이 파형은 crest factor가 6.8로 매우
+뾰족해서, 피크를 맞춰도 몸통이 한참 아래에 남는다. 손이 느끼는 건 피크가 아니라
+rms × 시간이므로 두 가지를 같이 올려야 했다.
+
+### 15.2.1 왜 게인만 올리면 안 됐나 — 리미터가 도로 가져간다
+
+믹서 리미터는 채널을 0.95에 붙잡고 릴리즈가 120 ms다. 한 번 걸리면 큐가 끝날 때까지
+계속 눌러 버린다. 게인만 키운 결과:
+
+```
+gain    제출 peak   제출 rms
+  0.6       0.406     0.0600
+  4.0       1.000     0.2229
+ 12.0       1.000     0.2856   <- 게인 3배에 rms +28%
+```
+
+**그래서 포화를 로드 시점으로 옮겼다.** 클립 자체를 리미터 문턱(0.95) *아래인*
+`--blade-ceiling`(기본 0.94)으로 `y = c·tanh(x/c)` 포화시킨다. 그러면
+
+* 에너지가 파형에 영구히 박힌다 — 리미터가 되돌릴 수 없다.
+* **단일 큐는 리미터를 아예 건드리지 않는다.** 리미터는 원래 일(겹칠 때 합을 잡는 것)로
+  돌아간다.
+* 하드 컷이 아니라 tanh 니를 쓴다. 보이스 코일에 각진 모서리는 클릭이고, 이 정도로
+  밀어 넣으면 파형의 상당 부분이 니 위에 앉는다.
+
+`--blade-gain`은 이제 레벨이 아니라 **얼마나 많은 부분을 천장에 밀어붙이느냐**를
+정한다. 포화 후 측정 rms(ring 포함):
+
+```
+gain     20     40     80    160    400
+rms   0.275  0.335  0.387  0.427  0.459
+```
+
+기본값 **80**은 이 곡선이 평평해지는 지점이다 — 두 배 더 줘도 10%뿐이다. 그쯤이면
+파형이 거의 사각파라 **거친 게 당연하다**. 이 기본값이 일부러 하는 거래다.
+
+### 15.2.2 길이 — ring을 붙였다
+
+제작 파형 120/165 ms는 합성 380/500 ms에 비해 짧다. rms를 맞춰도 총 에너지가 1/3이므로
+배율로는 닫히지 않는다. 그래서 스피커 큐가 쓰던 `ExtendDecayTail`을 그대로 써서
+**클립 자신의 후반부 재료**로 ring을 만들어 붙인다(`--blade-tail-ms`, 기본 320 ms).
+루프도 아니고 무음도 아니다.
+
+순서는 **ring → 게인 → 천장**이다. ring을 게인 앞에 붙여야 그 재료가 아직 각지지 않은
+울림이고, 그다음 같이 밀려 들어가서 **꼬리도 타격만큼 세진다**. 좌우는 같은 결정론적
+grain 오프셋을 쓰므로 쌍이 어긋나지 않는다.
+
+### 15.2.3 최종 측정
+
+```
+blade_deflect  120 ms + 320 ms ring = 440 ms,  x80 -> peak 0.94  rms 0.387
+blade_block    165 ms + 320 ms ring = 485 ms,  x80 -> peak 0.94  rms 0.473
+```
+
+0.6 기준 대비 rms 약 **6.5배**, 길이 약 **3배**. 합성 파형 대비로도 rms 2.0~2.8배다.
+`--play alternate`에서 리미터 동작 프레임 0, 클리핑 샘플 0 — 단일 큐는 리미터를
+건드리지 않는다는 설계가 실제로 그렇게 나왔다.
+
+빽빽한 겹침(`--play mixed --count 12 --interval-ms 80`)에서는 합이 1.91까지 올라가
+리미터가 최대 -5.9 dB 잡아준다. 그때도 `playedToTheEnd=15 / retiredAtCap=0 /
+hardDropped=0`, 클리핑 0 — **겹침 정책(§8)은 그대로다.**
+
+### 15.3 기본값을 켜 둔 것에 대해
+
+팩 자체는 `autoLiveBinding: false`,
+`status: design_candidate_not_hardware_validated`라고 적어 두었다. 그럼에도 기본을
+켜 둔 이유는 확정 명령(`--live --pid ... --enemy`)에 옵션을 더하지 않고 비교가
+가능해야 하기 때문이다. **되돌리는 쪽이 옵션이다**: `--no-blade-pcm`이 합성 파형으로
+돌아간다. 이것은 "파형이 검증됐다"는 뜻이 아니다.
+
+### 15.4 이번에 건드리지 않은 것
+
+적 반응의 **원인**(플레이어 근접 공격인지, 적끼리인지, 표창인지)을 가리는 필터는
+여전히 없다(14.4). 파형만 바뀌었으므로 적 반응도 같은 새 파형을 쓴다 — 이전과 같은
+상태이지 새로 생긴 문제가 아니다. 팩의 나머지 20개 파형(의수 계열, loop)은
+확인된 사용/명중 신호가 없어 연결하지 않았다.
+
+
+## 16. 스피커 큐 WAV 가 울림 한가운데서 잘려 있었다 (2026-09-24)
+
+### 증상
+
+햅틱 워크벤치에서 패링/방어 소리를 같이 재생하니 **끊겨** 들렸다.
+
+### 측정
+
+| 파일 | 길이 | 마지막 5 ms 레벨 |
+|---|---|---|
+| `deflect_hit.wav` | 66 ms | **0.404** = peak 의 44% |
+| `block_hit.wav` | 66 ms | **0.491** = peak 의 53% |
+
+소리가 절반 세기로 울리는 중에 끝난다. 페이드가 아예 없다.
+
+게임 경로는 이걸 `ExtendDecayTail` 로 잔향을 다시 만들어 붙여 가려 왔다. 그래서
+`--live` 에서는 티가 안 났고, 파일을 **날것으로** 재생하는 워크벤치에서 그대로
+드러났다. 문서 §4 의 460~461 줄은 이 파일들을 378 ms / 500 ms 라고 적고 있었고
+`src/GuardCue.cpp` 주석도 같은 숫자를 전제로 tailMs 를 고른 것이라, **파일이 언제인가
+짧은 버전으로 바뀌고 문서와 주석만 남아 있었다.**
+
+### 원본 두 개의 성질이 다르다
+
+* `sekiro_deflect.mp3` — 타격 5개(42/110/215/312/376 ms). 마지막 것 뒤가 비어 있어
+  **한 번의 튕김이 자연 길이 그대로** 남는다. 367 ms, 끝 0.00000.
+* `sekiro_parry.mp3` — 타격 9개가 60~80 ms 간격으로 이어진다. 각 타격은 다음 타격이
+  올 때 아직 **자기 세기의 72~104%** 로 울리고 있다:
+
+  ```
+     10ms 세기 0.663  혼자  65ms  구간끝 자기의  82%
+     75ms 세기 0.655  혼자  75ms  구간끝 자기의 104%
+    150ms 세기 0.692  혼자  70ms  구간끝 자기의  93%
+    ...
+    670ms 세기 0.231  혼자 911ms  구간끝 자기의   0%
+  ```
+
+  즉 이 녹음에는 **혼자 끝까지 울리는 막기 소리가 없다.** 마지막 670 ms 구간도
+  정규화해서 보면 100/103/77/44/55/42/61% 로 계속 때리는 모양이지 잦아드는 것이
+  아니다. 그래서 방어 큐는 짧게 자르고 페이드로 0 까지 내렸다 — **짧은 것과 끊긴
+  것은 다르다.** 잔향은 게임 경로의 tailMs 420 이 만든다.
+
+### 고친 것
+
+`tools/make_guard_cue_wavs.py` 가 원본에서 다시 만든다. `--extract-hit --fade-ms` 를
+쓰지 않은 이유: 그쪽은 페이드가 **정규화보다 먼저** 걸려서 정규화가 도로 올려 버린다
+— 34 ms 페이드를 줘도 끝이 12.7% 로 남았다. 이 스크립트는 정규화 뒤에 제곱 곡선으로
+건다.
+
+```
+deflect_hit.wav  366.9 ms  끝 0.00000 (peak의 0.00%)
+block_hit.wav     80.0 ms  끝 0.00735 (peak의 0.80%)
+```
+
+`deflect_hit_long.wav`(320 ms, 참조 없는 중간 산출물)는 지웠다. `*_aligned.wav` 는
+잘린 파일이 아니라 위 스크립트의 원본이므로 남겼다.
+
+### 완성된 큐를 파일로 뽑는 길
+
+`--write-cue DIR` 을 추가했다. `--write-wav` 는 **합성된** 큐를 쓰는데, 라이브 경로가
+실제로 내는 것은 녹음 + 다시 만든 잔향 + 셰이핑이라 서로 다른 소리다. 워크벤치처럼
+"게임이 내는 그 소리" 가 필요한 쪽은 이쪽을 쓴다.
+
+```
+audio/generated/deflect_cue.wav  686 ms, 1 impact
+audio/generated/block_cue.wav    500 ms, 1 impact
+```
+
+기본 프리셋의 패링/방어는 이제 이 파일을 가리킨다. 게임과 **같은 레벨**(trimDb -18
+포함, peak 0.116)이라 워크벤치에서도 게임과 같은 크기로 들린다.
+
+### 부수 효과: 방어 큐가 4 impact 에서 1 impact 이 됐다
+
+고치는 중간에 500 ms 짜리 연타 구간을 쓴 적이 있는데, 렌더 결과가 `4 impact` 로
+나왔다. 한 번 막았는데 네 번 치는 소리는 잘린 것만큼 잘못된 것이라 단발로 되돌렸다.
+지금은 양쪽 다 `1 impact` 다.
+
+### 확인한 것
+
+`audio/generated/` 의 6개 WAV 전부 마지막 5 ms 가 peak 의 2% 미만.
+`--play alternate` 회귀 통과(voice 6개 전부 끝까지 재생, 잘림 0).
+단위 802/802, ctest 4/4, 명령 통로 벤치 11단계, GUI 34+26 항목, 프리셋 10개 왕복 —
+전부 통과.
+
+**소리가 어떻게 들리는지는 확인하지 않았다.** 위는 전부 파형 숫자다.

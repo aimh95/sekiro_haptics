@@ -152,6 +152,11 @@ def main():
     print(f"\n>>> {args.seconds:.0f}초간 기록합니다. 평소대로 싸우세요. <<<\n")
     prev = {}
     pulses = Counter()
+    # Only a value of exactly 1 has the shape of the real one-frame pulse.
+    # The first run recorded 153 "pulses" of which 142 were values like 255,
+    # 244 and 238, fired in simultaneous bursts across dozens of modules --
+    # that is a freed allocation whose vftable still matches, not guarding.
+    shaped = Counter()
     outcomes = defaultdict(Counter)
     order = []
     start = time.perf_counter()
@@ -169,6 +174,8 @@ def main():
                 ob = r.read(m + P.OUTCOME_OFFSET, 1)
                 outcome = ob[0] if ob else -1
                 pulses[m] += 1
+                if pulse == 1:
+                    shaped[m] += 1
                 outcomes[m][outcome] += 1
                 if m not in order:
                     order.append(m)
@@ -182,17 +189,36 @@ def main():
         polls += 1
         time.sleep(args.interval_ms / 1000.0)
 
-    print(f"\n--- {sum(pulses.values())}회, 서로 다른 모듈 {len(pulses)}개 ---")
+    print(f"\n--- {sum(pulses.values())}회(원시), 서로 다른 모듈 {len(pulses)}개 ---")
+    print(f"    값이 정확히 1: {sum(shaped.values())}회, 모듈 {len(shaped)}개"
+          f"   <- 진짜 펄스의 모양")
     print(f"    polls={polls}  worst poll gap={worst*1000:.1f} ms")
+    if shaped:
+        # Back-trace ONLY the correctly shaped ones. Tracing the rest would
+        # bury the answer under memory churn.
+        order = [m for m in order if m in shaped]
     if not pulses:
         print("    펄스가 전혀 없었습니다. 수집 범위 밖이거나 +0x3C가 아닐 수 있습니다.")
         r.close()
         return 0
 
     # The player's own module, so it is never mistaken for an enemy's.
-    pl = P.ActionFlagLocator(r, args.base)
-    player_module, _ = pl.resolve()
-    print(f"    (참고: 플레이어 모듈 = 0x{player_module:x})" if player_module else "")
+    # enemy_guard_probe has no ActionFlagLocator; module_watch resolves it the
+    # proven way (a container that also holds SprjPlayerDamageModule).
+    player_module = 0
+    try:
+        import json as _json
+        import module_watch as MW
+        _map = {int(k, 16): v for k, v in _json.loads(
+            MW.VFTABLE_MAP.read_text(encoding="utf-8")).items()}
+        _pm = MW.PlayerModules(r, args.base, _map, ["SprjChrActionFlagModule"])
+        _got, _why = _pm.resolve()
+        if _got:
+            player_module = _got["SprjChrActionFlagModule"][0]
+    except Exception as exc:                       # noqa: BLE001
+        print(f"    (플레이어 모듈 확인 실패: {exc})")
+    if player_module:
+        print(f"    (참고: 플레이어 모듈 = 0x{player_module:x})")
 
     print("\n실제로 펄스가 난 모듈의 소유 경로:")
     for m in order:

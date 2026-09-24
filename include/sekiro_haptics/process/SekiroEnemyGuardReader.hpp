@@ -131,6 +131,17 @@ struct EnemyGuardReaderStats {
     /// Characters dropped because their module stopped being an
     /// ActionFlagModule -- unloaded or recycled.
     std::uint64_t charactersDropped = 0;
+    /// Pulses that WERE seen but never reached a detector because the module's
+    /// vftable re-check failed at that instant.
+    ///
+    /// This is the gap between rawPulseEdges and what the caller observes. The
+    /// re-check exists so a recycled allocation cannot report an event, but if
+    /// it rejects real pulses then the reader is counting edges the rest of the
+    /// system never sees -- which is exactly the shape of "the reader saw 51
+    /// edges and 2 events came out".
+    std::uint64_t pulseVptrRejected = 0;
+    /// Pulses dropped because the outcome byte could not be read.
+    std::uint64_t pulseOutcomeUnreadable = 0;
     std::int64_t lastDiscoveryUs = 0;
 };
 
@@ -170,6 +181,7 @@ public:
 
     const EnemyGuardReaderStats& Stats() const { return stats_; }
     void Invalidate();
+
 
 private:
     struct Tracked {

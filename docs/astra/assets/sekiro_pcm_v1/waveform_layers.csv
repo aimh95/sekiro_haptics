@@ -1,0 +1,63 @@
+﻿cue,layer,kind,start_ms,duration_ms,frequency_hz,amplitude,attack_ms,release_ms,decay_ms,left_gain,right_gain,am_hz,am_depth
+blade_deflect,1,tone,0,22,230,0.48,1.0,5,7,0.95,1,0,0
+blade_deflect,2,tone,0,60,170,0.38,1.5,10,18,0.95,1,0,0
+blade_deflect,3,tone,6,114,275,0.15,2,18,35,0.95,1,0,0
+blade_deflect,4,tone,10,100,335,0.06,3,20,30,0.95,1,0,0
+blade_block,1,tone,0,150,105,0.5,5,25,45,0.95,1,0,0
+blade_block,2,tone,0,80,165,0.24,3,15,25,0.95,1,0,0
+blade_block,3,grain,10,150,"[85, 145]",0.1,6,30,55,0.95,1,0,0
+shuriken_use,1,tone,0,40,"[220, 150]",0.46,1.5,7,15,1,0.65,0,0
+shuriken_use,2,tone,0,75,175,0.18,2,14,24,1,0.65,0,0
+shuriken_charge_loop,1,tone,0,1000,170,0.14,2,8,,1,0.65,7,0.65
+shuriken_charge_loop,2,tone,0,1000,240,0.05,2,8,,1,0.65,0,0
+spear_use,1,tone,0,100,"[120, 175]",0.4,8,20,50,1,0.65,0,0
+spear_use,2,tone,0,140,170,0.18,5,30,60,1,0.65,0,0
+spear_pull,1,tone,0,130,"[140, 95]",0.43,5,20,45,1,0.65,0,0
+spear_pull,2,tone,15,65,205,0.16,2,12,20,1,0.65,0,0
+axe_use,1,tone,0,180,"[95, 150]",0.32,10,30,65,1,0.65,0,0
+axe_use,2,tone,0,115,170,0.13,7,22,45,1,0.65,0,0
+axe_impact,1,tone,0,175,90,0.52,3,30,50,1,0.65,0,0
+axe_impact,2,tone,0,90,160,0.29,1.5,16,25,1,0.65,0,0
+axe_impact,3,grain,0,65,"[100, 220]",0.12,2,15,20,1,0.65,0,0
+firecracker_use,1,tone,0,42,185,0.4,1.5,8,12,1,0.65,0,0
+firecracker_use,2,tone,0,58,105,0.12,3,12,20,1,0.65,0,0
+firecracker_use,3,tone,38,42,210,0.33,1.5,8,12,1,0.65,0,0
+firecracker_use,4,tone,38,58,105,0.12,3,12,20,1,0.65,0,0
+firecracker_use,5,tone,89,42,165,0.38,1.5,8,12,1,0.65,0,0
+firecracker_use,6,tone,89,58,105,0.12,3,12,20,1,0.65,0,0
+firecracker_use,7,tone,146,42,235,0.29,1.5,8,12,1,0.65,0,0
+firecracker_use,8,tone,146,58,105,0.12,3,12,20,1,0.65,0,0
+firecracker_use,9,tone,222,42,190,0.35,1.5,8,12,1,0.65,0,0
+firecracker_use,10,tone,222,58,105,0.12,3,12,20,1,0.65,0,0
+flame_use,1,tone,0,150,"[95, 155]",0.39,4,25,50,1,0.65,0,0
+flame_use,2,grain,0,155,"[100, 260]",0.25,5,25,65,1,0.65,0,0
+flame_sustain_loop,1,tone,0,1000,110,0.19,2,8,,1,0.65,17,0.6
+flame_sustain_loop,2,tone,0,1000,173,0.13,2,8,,1,0.65,29,0.45
+flame_sustain_loop,3,grain,0,1000,"[90, 260]",0.2,4,15,,1,0.65,0,0
+sabimaru_use,1,tone,0,70,"[175, 215]",0.27,2,12,24,1,0.65,0,0
+sabimaru_use,2,tone,0,80,145,0.14,3,16,28,1,0.65,0,0
+sabimaru_cut,1,tone,0,52,"[225, 145]",0.4,1.5,10,17,1,0.65,0,0
+sabimaru_cut,2,tone,0,65,175,0.13,2,14,24,1,0.65,0,0
+umbrella_use,1,tone,0,130,"[125, 180]",0.34,4,20,50,1,0.65,0,0
+umbrella_use,2,tone,22,52,235,0.21,1.5,10,17,1,0.65,0,0
+umbrella_use,3,tone,35,125,155,0.14,4,22,42,1,0.65,0,0
+umbrella_impact,1,tone,0,145,125,0.38,3,25,45,1,0.65,0,0
+umbrella_impact,2,tone,0,85,205,0.29,1.5,15,25,1,0.65,0,0
+umbrella_impact,3,tone,15,110,280,0.09,3,20,35,1,0.65,0,0
+mist_raven_use,1,tone,0,125,165,0.16,12,25,65,1,0.65,0,0
+mist_raven_use,2,grain,0,135,"[140, 260]",0.16,15,30,75,1,0.65,0,0
+mist_raven_vanish,1,tone,0,170,"[210, 110]",0.28,5,35,55,1,0.4,0,0
+mist_raven_vanish,2,grain,0,175,"[130, 250]",0.15,12,35,65,1,0.65,0,0
+mist_raven_return,1,tone,0,105,175,0.35,3,20,32,1,0.65,0,0
+mist_raven_return,2,tone,0,65,250,0.12,2,13,20,1,0.65,0,0
+divine_abduction_use,1,tone,0,270,"[120, 210]",0.31,15,40,130,1,0.4,0,0
+divine_abduction_use,2,grain,0,270,"[110, 210]",0.16,18,40,140,1,0.4,11,0.5
+finger_whistle_use,1,tone,0,375,210,0.16,25,65,210,1,0.65,0,0
+finger_whistle_use,2,tone,0,375,228,0.13,25,65,210,1,0.65,0,0
+sen_throw_use,1,tone,0,45,205,0.3,1.5,8,14,1,0.65,0,0
+sen_throw_use,2,tone,17,48,250,0.26,1.5,8,15,1,0.65,0,0
+sen_throw_use,3,tone,39,55,180,0.24,2,10,18,1,0.65,0,0
+sen_throw_use,4,tone,0,115,155,0.14,3,20,35,1,0.65,0,0
+lazulite_shuriken_use,1,tone,0,40,"[220, 150]",0.46,1.5,7,15,1,0.65,0,0
+lazulite_shuriken_use,2,tone,0,75,175,0.18,2,14,24,1,0.65,0,0
+lazulite_shuriken_use,3,tone,6,110,285,0.11,3,22,38,1,0.65,0,0

@@ -1,0 +1,105 @@
+{
+  "wavDecodeChecked": 22,
+  "checks": [
+    "float32/stereo/48000Hz",
+    "exact frame length",
+    "finite",
+    "peak<0.85",
+    "abs(channel mean)<1e-7",
+    "zero one-shot endpoints",
+    "periodic loop boundary continuity",
+    "two deterministic re-renders"
+  ],
+  "overlapScenarios": [
+    {
+      "kind": "deflect",
+      "intervalMs": 100,
+      "voices": 12,
+      "offlineEveryClipFullySummed": true,
+      "preLimiterPeak": 0.4319742894731462,
+      "samplesOver09": 0,
+      "samplesOver1": 0
+    },
+    {
+      "kind": "block",
+      "intervalMs": 100,
+      "voices": 12,
+      "offlineEveryClipFullySummed": true,
+      "preLimiterPeak": 0.29999442100524903,
+      "samplesOver09": 0,
+      "samplesOver1": 0
+    },
+    {
+      "kind": "mixed",
+      "intervalMs": 100,
+      "voices": 12,
+      "offlineEveryClipFullySummed": true,
+      "preLimiterPeak": 0.4276602387428284,
+      "samplesOver09": 0,
+      "samplesOver1": 0
+    },
+    {
+      "kind": "deflect",
+      "intervalMs": 200,
+      "voices": 12,
+      "offlineEveryClipFullySummed": true,
+      "preLimiterPeak": 0.4276602387428284,
+      "samplesOver09": 0,
+      "samplesOver1": 0
+    },
+    {
+      "kind": "block",
+      "intervalMs": 200,
+      "voices": 12,
+      "offlineEveryClipFullySummed": true,
+      "preLimiterPeak": 0.29999442100524903,
+      "samplesOver09": 0,
+      "samplesOver1": 0
+    },
+    {
+      "kind": "mixed",
+      "intervalMs": 200,
+      "voices": 12,
+      "offlineEveryClipFullySummed": true,
+      "preLimiterPeak": 0.4276602387428284,
+      "samplesOver09": 0,
+      "samplesOver1": 0
+    },
+    {
+      "kind": "deflect",
+      "intervalMs": 400,
+      "voices": 12,
+      "offlineEveryClipFullySummed": true,
+      "preLimiterPeak": 0.4276602387428284,
+      "samplesOver09": 0,
+      "samplesOver1": 0
+    },
+    {
+      "kind": "block",
+      "intervalMs": 400,
+      "voices": 12,
+      "offlineEveryClipFullySummed": true,
+      "preLimiterPeak": 0.29999442100524903,
+      "samplesOver09": 0,
+      "samplesOver1": 0
+    },
+    {
+      "kind": "mixed",
+      "intervalMs": 400,
+      "voices": 12,
+      "offlineEveryClipFullySummed": true,
+      "preLimiterPeak": 0.4276602387428284,
+      "samplesOver09": 0,
+      "samplesOver1": 0
+    }
+  ],
+  "hypotheticalStress": {
+    "peak": 0.9786051750183105,
+    "samplesOver09": 80,
+    "samplesOver1": 0,
+    "note": "Offline arithmetic only; hypothetical concurrent tool states; not a runtime mixer test."
+  },
+  "hardwareOrWindowsRuntimeTested": false,
+  "speakerFilesChanged": false,
+  "allRecipesAuthoredCandidates": true
+}

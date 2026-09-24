@@ -88,11 +88,13 @@ GuardCueConfig DefaultGuardCueConfig() {
     // Three overlapping layers: a sharp 260->220 Hz contact, a 205 Hz body,
     // and a very thin 250 Hz ring that outlives both. Sharp touch, fine metal
     // ring, clean end. First prototype values, not device optima.
-    // Matched to the SPEAKER CLIP's own length (deflect_hit.wav is 378 ms),
-    // so the felt impact and the sound stop together instead of one of them
-    // ending early. The extra length is all in the ring layer: contact and
-    // body -- where the strength is -- are unchanged, so this is a longer
-    // fading tail, not a longer buzz.
+    // The haptic length is NOT matched to the speaker clip any more.
+    //
+    // It used to be: the clip was a 378 ms slice and this followed it. Those
+    // slices ended mid-ring -- the last 5 ms sat at 44% of peak -- and were
+    // replaced by the full recordings, which run 742 ms and 1581 ms. Holding a
+    // felt impact for a second and a half is not "they stop together", it is a
+    // buzz that outlasts the hit. So the haptic keeps its own length.
     c.deflect.haptic.totalMs = 378.0f;
     // A DIGITAL amplitude, not a percentage of force. 0.85 is ~9 dB above the
     // original 0.30 and leaves 15% headroom before full scale, which the
@@ -132,7 +134,7 @@ GuardCueConfig DefaultGuardCueConfig() {
     // Same three layers, moved down and widened: a softer 185 Hz contact, a
     // rounder 115 Hz body that carries the weight, and a quieter 210 Hz ring.
     // Must stay metallic -- not a wooden knock, not a long hum.
-    // Same rule: block_hit.wav is 500 ms.
+    // Same: its own length, not the clip's.
     c.block.haptic.totalMs = 500.0f;
     c.block.haptic.normalizePeak = 0.85f;
     c.block.haptic.contact = { 0.0f,  14.0f, 180.0f, 180.0f, 1.6f,  0.0f, 0.80f, 130.0f};
@@ -444,7 +446,21 @@ float PeakAmplitude(const std::vector<float>& clip) {
 namespace {
 
 void ReadSpeaker(const json::JsonValue& v, SpeakerCueProfile& s) {
-    if (const auto* clip = v.Find("clipPath"); clip && clip->IsString()) s.clipPath = clip->AsString();
+    // clipRaw only means anything together with the clipPath it was chosen
+    // for: the built-in default pairs clipRaw=true with the WHOLE recording
+    // (five or six impacts, deliberately). A config that names its own
+    // clipPath -- e.g. a single-impact slice with a synthesised tail -- must
+    // not inherit that flag, or the tail is silently discarded and the cue
+    // collapses to the bare 66 ms slice.
+    //
+    // This is not hypothetical: config/guard_cues.json predates clipRaw, so
+    // it has no such key, and inheriting the default turned its 386/486 ms
+    // cue back into 66 ms with no ring.
+    const auto* clipPath = v.Find("clipPath");
+    if (clipPath && clipPath->IsString()) {
+        s.clipPath = clipPath->AsString();
+        s.clipRaw = false;   // this file's own clip, unless it says otherwise
+    }
     if (const auto* raw = v.Find("clipRaw"); raw) s.clipRaw = raw->IsBool() ? raw->AsBool()
                                                                            : Number(v, "clipRaw", 0.0) != 0.0;
     s.clipPeak = static_cast<float>(Number(v, "clipPeak", s.clipPeak));

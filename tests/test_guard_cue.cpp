@@ -274,3 +274,56 @@ SH_TEST(GuardCue_ExtendDecayTailAddsARingWithoutASecondAttack) {
     ExtendDecayTail(untouched, kRate, 0.0f, 13.0f, 18.0f);
     SH_CHECK(untouched.size() == dry.size());
 }
+
+// A config file that names its own clip must not inherit clipRaw from the
+// built-in defaults.
+//
+// This is a real regression, not a hypothetical. The shipped
+// config/guard_cues.json was written before clipRaw existed, so it has no such
+// key. The defaults later moved to clipRaw=true paired with the WHOLE
+// recording, and the absent key let that flag leak onto this file's
+// single-impact slice -- which silently skipped both NormalizePeak and
+// ExtendDecayTail and collapsed a 386 ms cue with a synthesised ring into the
+// bare 66 ms slice. It was audible as "the sound is cut off".
+SH_TEST(GuardCue_AConfigWithItsOwnClipPathDoesNotInheritClipRaw) {
+    const std::string text = R"({
+      "deflect": { "speaker": { "clipPath": "audio/generated/deflect_full.wav",
+                                "tailMs": 320 } },
+      "block":   { "speaker": { "clipPath": "audio/generated/block_full.wav",
+                                "tailMs": 420 } }
+    })";
+    GuardCueConfig parsed;
+    std::string error;
+    SH_CHECK(ParseGuardCueConfig(text, parsed, error));
+
+    // The default profile has clipRaw on; naming a clip turns it back off, so
+    // the tail this file asked for is actually built.
+    SH_CHECK(DefaultGuardCueConfig().deflect.speaker.clipRaw);
+    SH_CHECK(!parsed.deflect.speaker.clipRaw);
+    SH_CHECK(!parsed.block.speaker.clipRaw);
+    SH_CHECK(parsed.deflect.speaker.tailMs == 320.0f);
+    SH_CHECK(parsed.block.speaker.tailMs == 420.0f);
+}
+
+SH_TEST(GuardCue_AConfigThatAsksForClipRawStillGetsIt) {
+    const std::string text = R"({
+      "deflect": { "speaker": { "clipPath": "audio/sekiro_deflect.mp3",
+                                "clipRaw": true } }
+    })";
+    GuardCueConfig parsed;
+    std::string error;
+    SH_CHECK(ParseGuardCueConfig(text, parsed, error));
+    SH_CHECK(parsed.deflect.speaker.clipRaw);
+}
+
+SH_TEST(GuardCue_AConfigThatTurnsClipRawOffExplicitlyIsHonoured) {
+    const std::string text = R"({
+      "deflect": { "speaker": { "clipRaw": false } }
+    })";
+    GuardCueConfig parsed;
+    std::string error;
+    SH_CHECK(ParseGuardCueConfig(text, parsed, error));
+    // No clipPath here, so the default's path stays -- but the explicit flag
+    // still wins over the default's true.
+    SH_CHECK(!parsed.deflect.speaker.clipRaw);
+}

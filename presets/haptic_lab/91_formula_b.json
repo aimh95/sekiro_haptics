@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "name": "예제 B — cos(60(t−t0))/t",
+  "masterGain": 1.0,
+  "saturationCeiling": 0.0,
+  "lengthMs": 600.0,
+  "speaker": {
+    "path": "",
+    "loaded": false,
+    "enabled": true,
+    "gain": 1.0,
+    "offsetMs": 0.0,
+    "channel": 1,
+    "frames": 0,
+    "durationMs": 0.0
+  },
+  "layers": [
+    {
+      "name": "B",
+      "muted": false,
+      "solo": false,
+      "startMs": 0.0,
+      "durationMs": 600.0,
+      "waveform": "formula",
+      "frequencyHz": 60.0,
+      "frequencyEndHz": 200.0,
+      "modulationHz": 8.0,
+      "modulationDepth": 1.0,
+      "decayPerSecond": 40.0,
+      "amplitude": 0.045,
+      "gainDb": 0.0,
+      "startPhaseDeg": 0.0,
+      "leftGain": 1.0,
+      "rightGain": 1.0,
+      "envelopeEnabled": false,
+      "attackMs": 5.0,
+      "holdMs": 0.0,
+      "decayMs": 30.0,
+      "sustain": 0.6,
+      "releaseMs": 40.0,
+      "formula": "if(t < t0, 0, cos(60*(t - t0))/t)",
+      "t0Seconds": 0.05,
+      "formulaTimeFromLayerStart": false
+    }
+  ],
+  "note": "수식 편집기 예제. t 가 t0 에 가까울 때 1/t 가 커져서 원래대로면 peak 가 10 까지 갑니다. 그대로 두면 리미터가 -19 dB 를 먹어 무엇을 듣는지 알 수 없으므로 진폭을 0.045 로 낮춰 두었습니다. 올려 보면 리미터가 어떻게 동작하는지 분석 패널에서 볼 수 있습니다.",
+  "designStatus": "design_candidate_not_hand_verified",
+  "output": {
+    "endpointId": null,
+    "hapticLeft": null,
+    "hapticRight": null,
+    "sampleRateHz": 48000
+  },
+  "analysis": {
+    "fftSize": 2048,
+    "window": "hann",
+    "startFrame": 0,
+    "unit": "PCM 진폭"
+  }
+}

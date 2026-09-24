@@ -274,6 +274,15 @@ walked_enough:
         std::lock_guard<std::mutex> lock(trackedMutex_);
         // Carry over what each character last reported, so a rediscovery does
         // not reset an outcome byte and manufacture a fresh edge.
+        //
+        // NOTE (2026-09-20): a "module instance" continuity memory was tried
+        // here -- it kept a character's generation across a drop so a brief
+        // read failure would not look like an object replacement. It was
+        // REVERTED: an A/B in one play session showed enemy reactions were
+        // clearly better with this original rule and poor with the memory.
+        // The reasoning behind the memory still looks sound on paper, which is
+        // exactly why it is not being re-applied without a measurement that
+        // says it helps. See docs/11-guard-feedback.md 14.5.
         for (auto& entry : built) {
             for (const auto& old : tracked_) {
                 if (old.character == entry.character && old.module == entry.module) {
@@ -326,10 +335,13 @@ const std::vector<EnemyGuardSample>& SekiroEnemyGuardReader::Poll() {
             if (reader_.ReadBytes(entry.module + layout_.shared.outcomeOffset, &outcome, 1) ==
                 ProcessReaderResult::Success) {
                 entry.lastOutcome = outcome;
+            } else {
+                ++stats_.pulseOutcomeUnreadable;
             }
             // A set pulse is the one moment worth re-proving the type, so a
             // recycled allocation cannot report an event.
             if (!HasVftable(entry.module, layout_.shared.actionFlagVftableRva)) {
+                ++stats_.pulseVptrRejected;
                 dropped.push_back(entry.character);
                 continue;
             }
@@ -364,11 +376,30 @@ void SekiroEnemyGuardReader::StartBackgroundDiscovery(float intervalSeconds) {
     if (discoveryRunning_.exchange(true)) return;
     discoveryIntervalSeconds_ = intervalSeconds > 0.5f ? intervalSeconds : 4.0f;
     discoveryThread_ = std::thread([this] {
+        // Back off when discovery keeps finding nothing.
+        //
+        // Measured: with the game sitting in a menu (WorldChrMan null) this
+        // ran 22 times in 45 s, walked its whole node budget each time and
+        // tracked 0 characters -- while the detection loop's worst poll gap
+        // was 132 ms with 439 missed slots. The walk shares ReadProcessMemory
+        // with that loop, so a search that cannot succeed is not free: it is
+        // paid for in detection latency.
+        //
+        // A pass that finds characters resets the interval immediately, so a
+        // real fight is never slower to pick up than before.
+        int emptyPasses = 0;
         while (discoveryRunning_.load()) {
-            Discover();
+            emptyPasses = Discover() == 0 ? emptyPasses + 1 : 0;
             // Slept in short slices so shutdown does not wait out a full
             // interval.
-            const int slices = static_cast<int>(discoveryIntervalSeconds_ * 10.0f);
+            float interval = discoveryIntervalSeconds_;
+            if (emptyPasses > 2) {
+                // 2x per consecutive empty pass, capped, so a menu or a
+                // loading screen stops costing anything within a few seconds.
+                const int steps = std::min(emptyPasses - 2, 4);
+                interval *= static_cast<float>(1 << steps);
+            }
+            const int slices = static_cast<int>(interval * 10.0f);
             for (int i = 0; i < slices && discoveryRunning_.load(); ++i)
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }

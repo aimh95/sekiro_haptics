@@ -14,8 +14,18 @@
 #include "sekiro_haptics/process/GuardOutcomeEventDetector.hpp"
 #include "sekiro_haptics/process/SekiroPlayerGuardReader.hpp"
 #include "sekiro_haptics/process/SekiroEnemyGuardReader.hpp"
+#include "sekiro_haptics/process/SekiroProstheticReader.hpp"
+#include "sekiro_haptics/process/SekiroWireActionReader.hpp"
+#include "sekiro_haptics/process/SekiroProstheticActionReader.hpp"
+#include "sekiro_haptics/ProstheticTriggerPolicy.hpp"
+#include "sekiro_haptics/WirePrepPolicy.hpp"
 #include "sekiro_haptics/process/AobPattern.hpp"
 #include "sekiro_haptics/process/Win32ProcessReader.hpp"
+#include "sekiro_haptics/dualsense/AdaptiveTriggerRuntime.hpp"
+#include "sekiro_haptics/presets/MappingRepository.hpp"
+#include "sekiro_haptics/presets/OutputPresetRepository.hpp"
+#include "sekiro_haptics/runtime/DualSenseAudioPcmSink.hpp"
+#include "sekiro_haptics/runtime/OutputRuntime.hpp"
 
 #include <windows.h>
 #include <hidsdi.h>
@@ -123,11 +133,59 @@ SUPPLIED RECORDINGS
 
 INSPECTING WAVEFORMS WITHOUT HARDWARE
   --write-config PATH  write the effective config out in the current schema
-  --enemy              also cue when an ENEMY blocks/deflects. The signal says
-                       "this character guarded", NOT "it guarded my attack"
+  --enemy              also cue when an ENEMY blocks/deflects (ON BY DEFAULT).
+                       The signal says "this character guarded", NOT "it
+                       guarded my attack"
+  --no-enemy           turn enemy reactions off
+  --prosthetic-cue-dir DIR
+                       tool_switch.wav plays when you CHANGE prosthetic.
+                       shuriken.wav / spear.wav / axe.wav play on the ATTACK
+                       code of that tool (not its ready code, not on R2).
+  --no-blade-pcm       use the SYNTHESISED deflect/block haptics instead of
+                       the authored blade waveforms (the A/B; the authored
+                       ones are on by default)
+  --blade-pcm-dir DIR  where blade_deflect.wav / blade_block.wav live
+  --blade-gain F       overdrive into the ceiling below (default 80; the
+                       curve flattens there -- doubling again buys ~10%)
+  --blade-ceiling F    where the overdrive folds down, under the mixer's 0.95
+                       limiter threshold so a single cue never trips it (0.94)
+  --blade-tail-ms F    ring added from the clip's own late material (320)
+  --blade-tail-decay F how fast that ring dies; lower is longer (5)
+  --no-prosthetic-trigger
+                       turn off the R2 preparation resistance
+  --no-wire            turn off wire-action detection entirely
+  --no-wire-haptic     no PCM thump at the start of a wire action
+  --no-wire-trigger    no L2 resistance during a wire action
+  --wire-start N --wire-end N --wire-strength N
+                       L2 resistance while a wire target is AVAILABLE, as a
+                       weapon-style catch: start zone 2..7, end zone
+                       start+1..8, strength 0..8 (default 2 / 4 / 4). It is
+                       already on when you can grapple, and pushing past the
+                       end zone releases it completely.
+                       Zones are positions along trigger travel and strength is
+                       the firmware's 1..8 scale -- neither is a percentage.
+  --wire-ms N          older timings, for comparison: N>0 applies the
+                       resistance AT the launch for N ms; 0 holds it for the
+                       whole flight (resistance arrives mid-flight).
+  --shuriken-start N --shuriken-end N --shuriken-strength N
+                       Loaded Shuriken (70000) catch: zones 2..7 / start+1..8,
+                       strength 0..8  (default 3 / 4 / 4)
+  --spear-start N --spear-strength N
+                       Loaded Spear (78000) constant resistance: zone 0..9,
+                       strength 0..8  (default 2 / 3)
+                       Zones are positions along trigger travel, strength is
+                       the firmware's 1..8 scale -- neither is a percentage.
   --enemy-rediscover N seconds between rebuilds of the tracked enemy set (6)
+  --trigger-demo       ALSO drive the adaptive triggers from the same events:
+                       deflect -> R2 weapon (zones 3..7, strength 8) for 120 ms,
+                       block -> L2 feedback (zone 2, strength 5) for 180 ms.
+                       DEMO VALUES. Nothing measured says these are right, no
+                       game button is remapped, and it is off unless asked for.
+                       Works with --play as well as --live. See docs/12.
   --overlap-test       single shot, then 400/200/100 ms repeats and a mixed run;
                        measures the submitted mix for cut-short cues and gaps
+  --write-cue DIR      write the FINISHED speaker cues (what --live actually plays,
+                       recording + rebuilt ring + shaping) as 48k mono WAV
   --dump-mix DIR       write each overlap-test phase's submitted mix as a WAV
   --audio-diag         speaker-only / haptic-only / together / fast repeats, with
                        feed gap, buffer padding and voice end reasons per phase
@@ -187,10 +245,98 @@ struct Options {
     bool audioDiag = false;
     bool overlapTest = false;
     std::string dumpMix;
-    /// Also fire a cue when an ENEMY blocks or deflects. Off by default: the
-    /// signal says "this character guarded", not "it guarded MY attack", so
-    /// turning it on is an explicit choice (docs/astra/results/DEFLECT_STATUS.md 8.3).
-    bool enemy = false;
+    /// Where to write the finished speaker cues (see WriteRenderedCues).
+    std::string writeCue;
+    /// Also fire a cue when an ENEMY blocks or deflects.
+    ///
+    /// ON by default since 2026-09-20, at the user's request: the canonical
+    /// run is `--live --pid <pid>` and enemy reactions are wanted there.
+    /// `--no-enemy` turns it off.
+    ///
+    /// The signal itself still only says "this character guarded" -- NOT "it
+    /// guarded MY attack" (docs/astra/results/DEFLECT_STATUS.md 8.3). Which
+    /// reactions are adopted as player-melee reactions is decided separately;
+    /// see EnemyCausePolicy below.
+    bool enemy = true;
+    /// Attach a DEMO adaptive-trigger layer to the deflect/block presets.
+    ///
+    /// Off by default and deliberately so: nothing about Sekiro's L1 guard
+    /// says a trigger resistance belongs on L2/R2, no game button is
+    /// remapped, and no measurement says these parameters are right. This
+    /// exists to let trigger output be felt alongside the real PCM cues.
+    bool triggerDemo = false;
+    /// Where per-prosthetic selection cues live: shuriken.wav / spear.wav,
+    /// 48 kHz stereo float32, as the haptic workbench exports them.
+    ///
+    /// Empty means the feature is off, which is the default -- this fires on a
+    /// SELECTION CHANGE, and somebody who has not asked for that should not
+    /// suddenly feel their controller when they cycle tools.
+    std::string prostheticCueDir;
+    /// Use the AUTHORED blade waveforms for deflect/block instead of the
+    /// synthesised ones.
+    ///
+    /// On by default so the ordinary run command exercises them without
+    /// growing an option; `--no-blade-pcm` goes back to synthesis, which is
+    /// the A/B. The pack marks itself `autoLiveBinding: false` and
+    /// `design_candidate_not_hardware_validated`, so this default is a
+    /// decision to make the comparison reachable, NOT a claim that the
+    /// waveforms have been felt and judged.
+    ///
+    /// This swaps a WAVEFORM. It adds no event, relaxes no filter and
+    /// changes nothing about which reactions reach the output.
+    bool bladePcm = true;
+    /// Where the pack's wav/ directory is, relative to the working directory
+    /// like every other clip path here.
+    std::string bladePcmDir = "docs/astra/assets/sekiro_pcm_v1/wav";
+    /// One multiplier on the sample values, applied ONCE -- the preset layer
+    /// stays at 1.0 and the clips are not normalised, so the whole gain chain
+    /// is this number and `bladeCeiling`.
+    ///
+    /// The pack proposed 0.6, which measured at RMS 0.060 against the
+    /// synthesised haptic's 0.191 -- under a third of the energy, because
+    /// these clips are very peaky (crest factor ~6.8) and matching their PEAK
+    /// still leaves the body of the waveform far below.
+    ///
+    /// 80 is deliberate, heavy overdrive. Everything above the ceiling is
+    /// folded down by `bladeCeiling`, so this number does not set the level
+    /// -- it sets how MUCH of the waveform gets pushed up against that
+    /// ceiling, which is what a hand feels on a peaky waveform like this one.
+    ///
+    /// Measured RMS for blade_deflect at ceiling 0.94, after the 320 ms ring:
+    ///
+    ///     gain     20     40     80    160    400
+    ///     rms   0.275  0.335  0.387  0.427  0.459
+    ///
+    /// 80 is where that curve flattens -- doubling again buys 10%. The clip
+    /// is close to a square wave by then, so it is harsh by construction;
+    /// that is the trade this default is making on purpose.
+    float bladeGain = 80.0f;
+    /// Where the overdrive is folded down, applied to the CLIP at load.
+    ///
+    /// This is the whole reason the gain above does anything. The mixer's
+    /// limiter holds a channel at 0.95 with a 120 ms release, so simply
+    /// raising the gain made the limiter hand the level straight back: RMS
+    /// went 0.223 at gain 4 to only 0.286 at gain 12, for three times the
+    /// number. Saturating here instead, just BELOW that threshold, means a
+    /// single cue never trips the limiter at all, and the limiter goes back
+    /// to doing its actual job -- catching sums during overlap.
+    ///
+    /// The fold is a tanh knee, not a hard cut: a square corner on a voice
+    /// coil is a click, and these waveforms are driven far enough that a
+    /// large part of them sits on the knee.
+    float bladeCeiling = 0.94f;
+    /// Milliseconds of ring added to each blade clip, built from that clip's
+    /// OWN late material by ExtendDecayTail -- the same granular tail the
+    /// speaker cues use, not a loop and not silence.
+    ///
+    /// The authored clips are 120 ms and 165 ms against the synthesised
+    /// haptics' 378 ms and 500 ms. Gain cannot close that: at equal RMS a
+    /// clip a third as long delivers a third of the energy. So the length is
+    /// closed here instead, and the tail is added BEFORE the gain so it is
+    /// driven into the ceiling like everything else.
+    float bladeTailMs = 320.0f;
+    /// How fast that ring dies away. Lower is longer; the speaker cues use 11.
+    float bladeTailDecayPerSecond = 5.0f;
     /// Seconds between rebuilds of the tracked enemy set.
     ///
     /// Was 6 s, which made detection "not work at first and then suddenly
@@ -198,6 +344,60 @@ struct Options {
     /// right characters may not be loaded yet, and only a later pass fixes
     /// them. The walk now costs ~134 ms, so waiting 6 s bought nothing.
     float enemyRediscoverSeconds = 2.0f;
+    /// R2 PREPARATION resistance chosen by the currently selected prosthetic.
+    /// On by default; it only ever acts on two exactly-matched equip ids.
+    bool prosthetic = true;
+    /// Log wire-action start/end. Detection only -- no output is attached to
+    /// it yet, on purpose: the button mapping and what a wire should feel like
+    /// have not been decided.
+    bool wire = true;
+    /// A short PCM thump on the grip the moment a wire action starts. This is
+    /// the part that gets felt regardless of where the fingers are.
+    bool wireHaptic = true;
+    /// Constant L2 resistance held for the duration of the wire action.
+    ///
+    /// L2 and not R2 on purpose: R2 already carries the prosthetic preparation
+    /// resistance, and two owners fighting over one trigger would need a
+    /// hand-back rule for something nobody asked for. This also means a wire
+    /// action never disturbs the prosthetic resistance.
+    bool wireTrigger = true;
+    /// Zone the L2 resistance starts at (0..9) and its 1..8 strength. First
+    /// prototype values, adjustable -- not measured optima.
+    /// Weapon mode, like the shuriken preparation: the trigger resists
+    /// between these two zones and then LETS GO completely once the finger
+    /// pushes past the end. That release is the "fired" sensation.
+    ///
+    /// Feedback mode was tried first and is wrong for this: it resists all the
+    /// way to the bottom of travel, so there is no moment where it gives way.
+    std::uint8_t wireTriggerZone = 2;      // start zone (2..7)
+    /// End zone (start+1..8). ONE zone wide by default: the span is where the
+    /// resistance lives, so a wide span keeps pushing back while the finger is
+    /// still travelling through it. A single zone gives a bump that is over
+    /// the instant it is crossed, which is the "click then nothing" the
+    /// sensation calls for. 2->4 was tried first and left residual resistance.
+    std::uint8_t wireTriggerEndZone = 3;
+    std::uint8_t wireTriggerStrength = 4;
+    /// How the L2 resistance is timed.
+    ///
+    /// The wanted sensation is the one the shuriken preparation already has:
+    /// the resistance is ALREADY THERE while a wire target is available, and
+    /// it LETS GO when the hook fires. So it follows the target-available
+    /// state, exactly like the prosthetic preparation follows the selected
+    /// tool -- it is not started by the launch.
+    ///
+    /// Two earlier versions got this wrong and are kept reachable for
+    /// comparison, because the difference is only decidable by hand:
+    ///   --wire-ms N (>0)  apply at launch for N ms  (catch on launch)
+    ///   --wire-ms 0       apply at launch, hold for the whole flight
+    ///                     (the inverted feel: resistance ARRIVES mid-flight)
+    /// Without --wire-ms, the resistance tracks target availability.
+    int wireTriggerMs = -1;
+    ProstheticTriggerSettings prostheticTrigger;
+    /// How often the selection is read. Selection is a slow, human-scale
+    /// state -- reading it on the 5 ms guard grid would cost pointer walks for
+    /// no benefit, and a resistance applied 100 ms after a menu closes is not
+    /// something a hand can notice.
+    int prostheticPollMs = 100;
 };
 
 /// The three haptic waveforms being compared, as data.
@@ -518,6 +718,30 @@ bool WriteSpeakerReport(HidApiDualSenseTransport& transport,
                   << "  write=" << ToString(result) << "\n";
     }
     return result == TransportResult::Success;
+}
+
+/// Claims the audio section on the SHARED output state and transmits it.
+///
+/// Byte for byte this is the report EnableSpeakerRouting already sent -- the
+/// full audio section (headphone + speaker volume, output path, pre-gain,
+/// with valid_flag0 0xF0 and valid_flag1 0x80), which is the report this
+/// project has actually verified on the hardware. What changes is OWNERSHIP:
+/// the claim now lives in the same state the triggers are written from, so
+/// every later trigger report re-asserts it instead of depending on the
+/// firmware remembering what a separate earlier report said.
+bool ClaimSpeakerRouting(dualsense::DualSenseOutputState& state,
+                         HidApiDualSenseTransport& transport, const Options& o) {
+    const auto candidates = transport.EnumerateCandidates();
+    if (candidates.empty()) return false;
+    if (!transport.IsOpen() && transport.Open(candidates.front().path) != TransportResult::Success)
+        return false;
+    dualsense::AudioOutputSettings audio;
+    audio.speakerVolume = static_cast<std::uint8_t>(std::clamp(o.speakerVolume, 0, 255));
+    audio.headphoneVolume = audio.speakerVolume;   // as EnableSpeakerRouting did
+    audio.outputPath = static_cast<std::uint8_t>(std::clamp(o.audioPath, 0, 3));
+    audio.speakerPreGain = static_cast<std::uint8_t>(std::clamp(o.preGain, 0, 7));
+    state.SetAudio(audio);
+    return state.Submit(transport) == TransportResult::Success;
 }
 
 bool EnableSpeakerRouting(HidApiDualSenseTransport& transport, int volume, int outputPath = 3) {
@@ -979,6 +1203,312 @@ void ConfigureMixer(DualSenseAudioDevice& device, const GuardCueConfig& config, 
     device.SetLimiter(limiter);
 }
 
+// --- the event -> mapping -> preset -> output path -------------------------
+//
+// The live loop used to call device.Queue() directly from inside the
+// detection loop. The cues and their timing are unchanged -- the same two
+// pre-rendered clips, queued the same way, with the same late-event budget --
+// but they now travel the documented route, so a preset can add a trigger or
+// a start offset without the detector learning anything about output.
+
+constexpr const char* kGameId = "sekiro";
+constexpr const char* kDeflectEventId = "combat.perfect_deflect";
+constexpr const char* kBlockEventId = "combat.block";
+constexpr const char* kDeflectPresetId = "guard.deflect";
+constexpr const char* kBlockPresetId = "guard.block";
+
+constexpr const char* kWireStartedEventId = "wire.started";
+constexpr const char* kWireStartPresetId = "wire.start";
+constexpr const char* kWireHapticCueId = "wire.start.haptic";
+
+// 의수는 서로 다른 두 가지 일이 일어난다. 섞으면 안 된다.
+//
+//  1. 바꿨다  -- 어느 의수로 넘어갔는지 알려 주는 짧은 알림. 무기의 성격을
+//                흉내낼 이유가 없다. UI 를 보지 않고 무엇을 골랐는지 아는 것이
+//                전부이므로, 한 가지 파형(tool_switch.wav)을 쓴다.
+//  2. 쐈다    -- 그 무기의 프리셋이 울린다. 수리검은 수리검 파형, 창은 창 파형.
+//
+// (1)은 선택 신호로 동작한다.
+// (2)는 SprjChrActionRequestModule +0xC8 의 동작 코드로 동작한다
+// (SekiroProstheticActionReader.hpp). 코드의 앞 두 자리가 무기를 말하고,
+// 끝 다섯 자리가 준비(000xx)와 공격(001xx)을 가른다. 진동은 **공격**에
+// 붙는다 -- 준비에 붙이면 도끼처럼 준비가 긴 무기는 휘두르기 전에 울린다.
+// R2 만 누른 것(…00900)은 공격이 아니라서 울리지 않는다.
+constexpr const char* kToolSwitchedEventId = "prosthetic.switched";
+constexpr const char* kToolSwitchPresetId = "prosthetic.switch";
+constexpr const char* kToolSwitchCueId = "prosthetic.switch.haptic";
+constexpr const char* kToolFiredShurikenEventId = "prosthetic.fired.shuriken";
+constexpr const char* kToolFiredSpearEventId = "prosthetic.fired.spear";
+constexpr const char* kToolFiredAxeEventId = "prosthetic.fired.axe";
+constexpr const char* kToolAxePresetId = "prosthetic.axe";
+constexpr const char* kToolAxeCueId = "prosthetic.axe.haptic";
+constexpr const char* kToolShurikenPresetId = "prosthetic.shuriken";
+constexpr const char* kToolSpearPresetId = "prosthetic.spear";
+constexpr const char* kToolShurikenCueId = "prosthetic.shuriken.haptic";
+constexpr const char* kToolSpearCueId = "prosthetic.spear.haptic";
+
+/// The "thump" felt as the hook fires.
+///
+/// Built with the SAME synthesiser the guard cues use -- this is different
+/// parameters, not a new engine. Short and low: a wire launch is a shove, not
+/// a metallic clang, so the bright inharmonic content the guard cues carry
+/// would be wrong here. Every number is a first prototype.
+HapticCueProfile WireStartHapticProfile() {
+    HapticCueProfile profile;
+    profile.totalMs = 70.0f;
+    // The same digital amplitude the guard haptics settled on, so the two do
+    // not need separate level matching by hand. 0.85 is an amplitude, not a
+    // percentage of force.
+    profile.normalizePeak = 0.85f;
+    //                   start    end      f0      f1    rise   hold  weight  decay
+    profile.contact = {  0.0f,   9.0f, 150.0f, 115.0f,  0.8f,  0.0f,  1.00f, 150.0f};
+    profile.body    = {  2.0f,  48.0f,  90.0f,  90.0f,  2.0f,  9.0f,  0.90f,  38.0f};
+    profile.ring    = { 22.0f,  70.0f, 110.0f, 110.0f,  4.0f,  0.0f,  0.15f,  30.0f};
+    profile.noiseAmplitude = 0.05f;
+    profile.gain = 1.0f;
+    return profile;
+}
+
+GameEvent MakeToolEvent(const std::string& eventId, std::int64_t timestampUs) {
+    GameEvent event;
+    event.gameId = kGameId;
+    event.eventId = eventId;
+    event.timestamp = std::chrono::microseconds(timestampUs);
+    return event;
+}
+
+GameEvent MakeWireEvent(std::int64_t timestampUs) {
+    GameEvent event;
+    event.gameId = kGameId;
+    event.eventId = kWireStartedEventId;
+    event.timestamp = std::chrono::microseconds(timestampUs);
+    return event;
+}
+
+
+struct GuardOutputProfile {
+    MappingRepository mappings;
+    OutputPresetRepository presets;
+};
+
+/// Builds the in-memory profile that reproduces the existing behaviour.
+///
+/// `wantSpeaker`/`wantHaptic` come from --mode and decide which LAYERS exist,
+/// rather than being checked at queue time. That keeps "how many outputs did
+/// this event produce" answerable from the preset instead of from a flag read
+/// somewhere else.
+/// The authored deflect/block actuator waveforms, held for as long as the
+/// sink refers to them.
+///
+/// Two channels, kept apart. These were written as a left/right PAIR, so
+/// downmixing them would average out the only thing that distinguishes the
+/// two hands, and folding them into the existing mono cue would do the same.
+struct BladeHapticPack {
+    std::vector<float> deflectLeft, deflectRight;
+    std::vector<float> blockLeft, blockRight;
+    bool loaded = false;
+    /// Why it did or did not load, printed at startup -- a silent fallback to
+    /// the synthesised waveform would look exactly like the pack working.
+    std::string report;
+};
+
+/// Fold everything above `ceiling` down onto it with a tanh knee.
+///
+/// Driving a clip and then letting the mixer's limiter pull it back is how
+/// the level was being given away: the limiter's release is 120 ms, so once
+/// it engaged it stayed engaged and held the whole cue down. Saturating the
+/// CLIP below that threshold puts the energy in permanently and leaves the
+/// limiter idle for a single cue.
+///
+/// A hard cut would do the same arithmetic and click, because a corner is a
+/// step in velocity. The knee only bends what is actually over.
+void SaturateToCeiling(std::vector<float>& clip, float ceiling) {
+    const float limit = (std::max)(0.05f, (std::min)(ceiling, 0.99f));
+    // y = c * tanh(x / c). Below the ceiling tanh(u) ~= u, so quiet material
+    // passes through essentially untouched; far above it the curve asymptotes
+    // to the ceiling and never reaches a corner.
+    for (float& v : clip) v = limit * std::tanh(v / limit);
+}
+
+BladeHapticPack LoadBladeHapticPack(const std::string& dir, std::uint32_t rate, float gain,
+                                    float ceiling, float tailMs, float tailDecayPerSecond) {
+    BladeHapticPack pack;
+    if (!std::isfinite(gain) || gain <= 0.0f) {
+        pack.report = "refused: --blade-gain must be a positive number";
+        return pack;
+    }
+    struct Entry {
+        const char* file;
+        std::vector<float>* left;
+        std::vector<float>* right;
+    };
+    const Entry entries[] = {
+        {"blade_deflect.wav", &pack.deflectLeft, &pack.deflectRight},
+        {"blade_block.wav", &pack.blockLeft, &pack.blockRight},
+    };
+    std::ostringstream report;
+    for (const auto& entry : entries) {
+        const auto path = std::filesystem::path(dir) / entry.file;
+        AudioClipInfo info;
+        LoadAudioClipStereo(path, rate, *entry.left, *entry.right, info);
+        if (!info.ok) {
+            pack.report = std::string("could not load ") + path.string() + " (" + info.error +
+                          ") -- falling back to the SYNTHESISED haptics";
+            pack.deflectLeft.clear();
+            pack.deflectRight.clear();
+            pack.blockLeft.clear();
+            pack.blockRight.clear();
+            return pack;
+        }
+        const auto authoredMs = entry.left->size() * 1000 / (std::max)(1u, rate);
+
+        // Order matters, and it is: tail, then gain, then ceiling.
+        //
+        // The tail is built from the ORIGINAL material, before the gain, so
+        // its grains come from a ring that has not been squared off yet --
+        // and then it is driven and folded along with everything else, so the
+        // added length is as strong as the hit rather than a quiet fade.
+        // Both sides get the same deterministic grain offsets, so the pair
+        // stays correlated instead of drifting apart.
+        ExtendDecayTail(*entry.left, rate, tailMs, tailDecayPerSecond, 18.0f);
+        ExtendDecayTail(*entry.right, rate, tailMs, tailDecayPerSecond, 18.0f);
+
+        // No per-clip normalisation: the pack set the relative levels of
+        // these two cues on purpose, and normalising each would flatten
+        // exactly that difference. The gain is the same number for both.
+        for (float& v : *entry.left) v *= gain;
+        for (float& v : *entry.right) v *= gain;
+        SaturateToCeiling(*entry.left, ceiling);
+        SaturateToCeiling(*entry.right, ceiling);
+
+        float peak = 0.0f, sumSquares = 0.0f;
+        for (float v : *entry.left) {
+            peak = (std::max)(peak, std::fabs(v));
+            sumSquares += v * v;
+        }
+        const float rms = entry.left->empty()
+                              ? 0.0f
+                              : std::sqrt(sumSquares / static_cast<float>(entry.left->size()));
+        report << "    " << entry.file << ": " << authoredMs << " ms + " << tailMs << " ms ring = "
+               << entry.left->size() * 1000 / (std::max)(1u, rate) << " ms, x" << gain
+               << " into ceiling " << ceiling << " -> peak " << peak << " rms " << rms << "\n";
+    }
+    pack.loaded = true;
+    pack.report = std::string("authored blade waveforms (deflect/block actuator pair)\n") +
+                  report.str() + "    preset layer gain stays 1.0, clips are not normalised";
+    return pack;
+}
+
+/// One prosthetic's selection cue, as the workbench exports it.
+struct ToolCuePack {
+    std::vector<float> left, right;
+    bool loaded = false;
+    std::string report;
+};
+
+ToolCuePack LoadToolCue(const std::string& dir, const char* file, std::uint32_t rate) {
+    ToolCuePack pack;
+    const auto path = std::filesystem::path(dir) / file;
+    AudioClipInfo info;
+    LoadAudioClipStereo(path, rate, pack.left, pack.right, info);
+    if (!info.ok) {
+        pack.report = std::string(file) + ": " + info.error;
+        return pack;
+    }
+    pack.loaded = true;
+    std::ostringstream report;
+    report << file << ": " << pack.left.size() * 1000 / (std::max)(1u, rate) << " ms";
+    pack.report = report.str();
+    return pack;
+}
+
+/// Put whichever pair of waveforms is in force onto the two guard cues. The
+/// cue IDS are unchanged, so no preset, mapping or event path knows which of
+/// the two it got.
+void RegisterGuardHapticCues(DualSenseAudioPcmSink& sink, const BladeHapticPack& blade,
+                             const std::vector<float>& deflectHaptic,
+                             const std::vector<float>& blockHaptic) {
+    if (blade.loaded) {
+        sink.RegisterStereoCue("deflect.haptic", blade.deflectLeft, blade.deflectRight);
+        sink.RegisterStereoCue("block.haptic", blade.blockLeft, blade.blockRight);
+        return;
+    }
+    sink.RegisterCue("deflect.haptic", deflectHaptic, PcmCueTarget::Haptic);
+    sink.RegisterCue("block.haptic", blockHaptic, PcmCueTarget::Haptic);
+}
+
+GuardOutputProfile BuildGuardProfile(const GuardCueConfig& config, bool wantSpeaker,
+                                     bool wantHaptic, bool triggerDemo, bool wireHaptic) {
+    GuardOutputProfile profile;
+    if (wireHaptic) {
+        // Haptic only. No speaker layer: the recordings on hand are sword
+        // impacts, and playing one for a grappling hook would be using an
+        // asset for something it is not.
+        profile.mappings.AddMapping({kGameId, kWireStartedEventId, kWireStartPresetId});
+        OutputPreset wire;
+        wire.presetId = kWireStartPresetId;
+        wire.displayName = "Wire launch";
+        PcmHapticOutputLayer layer;
+        layer.cueId = kWireHapticCueId;
+        layer.gain = 1.0f;
+        wire.pcmHaptic.push_back(layer);
+        profile.presets.AddPreset(wire);
+    }
+    profile.mappings.AddMapping({kGameId, kDeflectEventId, kDeflectPresetId});
+    profile.mappings.AddMapping({kGameId, kBlockEventId, kBlockPresetId});
+
+    auto build = [&](const char* presetId, const char* displayName, const char* cuePrefix,
+                     const GuardCueProfile& cue) {
+        OutputPreset preset;
+        preset.presetId = presetId;
+        preset.displayName = displayName;
+        if (wantSpeaker) {
+            SpeakerOutputLayer layer;
+            layer.cueId = std::string(cuePrefix) + ".speaker";
+            layer.gain = 1.0f;          // the clip is already at its rendered level
+            preset.speaker.push_back(layer);
+        }
+        if (wantHaptic) {
+            PcmHapticOutputLayer layer;
+            layer.cueId = std::string(cuePrefix) + ".haptic";
+            layer.gain = 1.0f;
+            layer.balance = cue.balance;
+            preset.pcmHaptic.push_back(layer);
+        }
+        if (triggerDemo) {
+            // DEMO VALUES. Nothing measured says a deflect should feel like a
+            // weapon trigger at zones 3..7, or that a block should be a flat
+            // resistance from zone 2. They are here to make trigger output
+            // audible/feelable next to the real cues, and they are off unless
+            // --trigger-demo is passed.
+            TriggerOutputLayer layer;
+            if (std::string(presetId) == kDeflectPresetId) {
+                layer.side = dualsense::TriggerSide::Right;
+                layer.spec = dualsense::TriggerEffectSpec::MakeWeapon(3, 7, 8);
+                layer.durationMs = 120.0f;
+            } else {
+                layer.side = dualsense::TriggerSide::Left;
+                layer.spec = dualsense::TriggerEffectSpec::MakeFeedback(2, 5);
+                layer.durationMs = 180.0f;
+            }
+            preset.trigger.push_back(layer);
+        }
+        profile.presets.AddPreset(preset);
+    };
+
+    build(kDeflectPresetId, "Deflect", "deflect", config.deflect);
+    build(kBlockPresetId, "Block", "block", config.block);
+    return profile;
+}
+
+GameEvent MakeGuardEvent(bool deflect, std::int64_t timestampUs) {
+    GameEvent event;
+    event.gameId = kGameId;
+    event.eventId = deflect ? kDeflectEventId : kBlockEventId;
+    event.timestamp = std::chrono::microseconds(timestampUs);
+    return event;
+}
+
 void ReportRenderStats(const AudioRenderStats& r) {
     const double gapMs = static_cast<double>(r.worstFeedGapUs) / 1000.0;
     std::cout << "\n--- audio render ---\n"
@@ -1311,6 +1841,18 @@ int Play(const Options& o) {
     const auto deflectHaptic = SynthesizeGuardHaptic(config.deflect.haptic, rate, config.hapticStrength);
     const auto blockHaptic = SynthesizeGuardHaptic(config.block.haptic, rate, config.hapticStrength);
 
+    // Loaded here, before the loop, like every other clip: nothing on the
+    // event path opens a file. Only the WAVEFORM changes -- the cue ids, the
+    // presets, the mappings and which events reach them are untouched.
+    BladeHapticPack blade;
+    if (o.bladePcm) {
+        blade = LoadBladeHapticPack(o.bladePcmDir, rate, o.bladeGain, o.bladeCeiling,
+                                    o.bladeTailMs, o.bladeTailDecayPerSecond);
+        std::cout << "  deflect/block haptics: " << blade.report << "\n";
+    } else {
+        std::cout << "  deflect/block haptics: SYNTHESISED (--no-blade-pcm)\n";
+    }
+
     const bool wantSpeaker = o.mode == "speaker" || o.mode == "both";
     const bool wantHaptic = o.mode == "haptic" || o.mode == "both";
     if (wantSpeaker && opts.speakerChannel < 0) {
@@ -1327,18 +1869,53 @@ int Play(const Options& o) {
     // Route controller audio to the built-in speaker over HID, not by changing
     // any Windows device setting.
     HidApiDualSenseTransport transport;
+    // The HID side, owned in one place. MarkPcmHapticsActive is bookkeeping
+    // only: it writes no byte, and crucially it does NOT set HAPTICS_SELECT,
+    // which would take the actuators off the PCM path the cues use.
+    dualsense::DualSenseOutputState hidState;
+    hidState.MarkPcmHapticsActive(wantHaptic);
     // The output-path byte configures the WHOLE endpoint, not just the speaker.
     // Gating this on "the caller wants speaker output" left haptic-only playback
     // silent even though the same channels vibrated during --channel-test, which
     // did send it. So it is always sent.
-    const bool routed = o.speakerRouting && EnableSpeakerRouting(transport, opts.speakerVolume, opts.audioPath);
+    const bool routed =
+        o.speakerRouting && ClaimSpeakerRouting(hidState, transport, opts);
     std::cout << "audio routing report: " << (routed ? "sent" : "not sent")
               << "  (path " << opts.audioPath << ", controller volume 0x" << std::hex
-              << (opts.speakerVolume & 0xFF) << std::dec << ")\n";
+              << (opts.speakerVolume & 0xFF) << std::dec << ")\n"
+              << "  haptic path: " << dualsense::ToString(hidState.HapticPathInUse())
+              << "   (legacy rumble is NOT claimed, so the actuators stay on PCM)\n";
     std::cout << "pattern=" << o.pattern << " hits=" << hits.size()
               << " interval=" << o.intervalMs << "ms mode=" << o.mode << "\n"
               << "speakerCh=" << opts.speakerChannel << " hapticL=" << opts.hapticLeft
               << " hapticR=" << opts.hapticRight << "\n\n";
+
+    // Manual playback goes through the SAME event -> mapping -> preset ->
+    // output path as --live, so this is a real rehearsal of that path with a
+    // scripted event source instead of the game. Only the source differs.
+    DualSenseAudioPcmSink pcmSink(device);
+    if (wantSpeaker) pcmSink.SetSpeakerChannel(opts.speakerChannel);
+    if (wantHaptic) pcmSink.SetHapticChannels(opts.hapticLeft, opts.hapticRight);
+    pcmSink.RegisterCue("deflect.speaker", deflectSpeaker, PcmCueTarget::Speaker);
+    pcmSink.RegisterCue("block.speaker", blockSpeaker, PcmCueTarget::Speaker);
+    RegisterGuardHapticCues(pcmSink, blade, deflectHaptic, blockHaptic);
+
+    dualsense::AdaptiveTriggerRuntime triggerRuntime(transport, hidState);
+    if (o.triggerDemo) {
+        triggerRuntime.OnReconnect(NowUs());
+        std::cout << "adaptive-trigger DEMO layers are ON: deflect -> R2 weapon 120 ms,\n"
+                     "  block -> L2 feedback 180 ms. Demonstration values, not a tuned\n"
+                     "  mapping, and no game button is remapped. Hold L2/R2 to feel them.\n\n";
+    }
+
+    const auto profile = BuildGuardProfile(config, wantSpeaker, wantHaptic, o.triggerDemo, false);
+    OutputRuntimeConfig runtimeConfig;
+    runtimeConfig.maxOutputLatencyUs = config.maxOutputLatencyUs;
+    OutputRuntime outputRuntime(profile.mappings, profile.presets, &pcmSink,
+                                o.triggerDemo ? &triggerRuntime : nullptr,
+                                o.triggerDemo ? &hidState : nullptr, runtimeConfig);
+    for (const auto& problem : outputRuntime.Bind())
+        std::cout << "  preset \"" << problem.presetId << "\": " << problem.message << "\n";
 
     const auto intervalUs = static_cast<std::int64_t>(std::max(1, o.intervalMs)) * 1000;
     const auto start = NowUs();
@@ -1357,29 +1934,73 @@ int Play(const Options& o) {
                 const bool deflect = hits[next].deflect;
                 // Nothing is ducked here. The previous clang keeps ringing and
                 // this one sums on top of it; that overlap is the point.
-                const auto& profile = deflect ? config.deflect : config.block;
-                if (wantSpeaker)
-                    device.Queue(deflect ? deflectSpeaker : blockSpeaker, opts.speakerChannel, 1.0f);
-                if (wantHaptic)
-                    device.QueuePair(deflect ? deflectHaptic : blockHaptic,
-                                     opts.hapticLeft, opts.hapticRight, 1.0f, profile.balance);
+                const auto dispatched = outputRuntime.Handle(MakeGuardEvent(deflect, due), now);
                 std::cout << "  [" << (now - start) / 1000 << "ms] "
                           << (deflect ? "DEFLECT" : "block  ")
-                          << "  late=" << late / 1000 << "ms voices=" << device.ActiveVoices() << "\n";
+                          << "  late=" << late / 1000 << "ms voices=" << device.ActiveVoices()
+                          << " id=" << dispatched.correlationId
+                          << " layers=" << dispatched.layersDispatched << "/"
+                          << dispatched.layersTotal;
+                if (dispatched.layersFailed > 0) std::cout << " FAILED=" << dispatched.layersFailed;
+                std::cout << "\n";
             }
             ++next;
         }
-        if (next >= hits.size() && device.ActiveVoices() == 0) break;
+        outputRuntime.Tick(now);
+        // Wait for the PCM tails AND for any trigger effect still holding its
+        // lifetime: a trigger that outlives the last clip must still be
+        // released by this process rather than left on the controller.
+        const bool triggersBusy = o.triggerDemo &&
+                                  (triggerRuntime.Active(dualsense::TriggerSide::Left).active ||
+                                   triggerRuntime.Active(dualsense::TriggerSide::Right).active);
+        if (next >= hits.size() && device.ActiveVoices() == 0 && !triggersBusy) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
     // Let the last tail actually reach the speaker before tearing down.
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    outputRuntime.DropPending();
+    // Both owners of a trigger effect hand it back. Leaving a preparation
+    // resistance on the controller after the session would be exactly the
+    // "stale effect outlives its state" failure this is built to avoid.
+    if (o.triggerDemo) triggerRuntime.ResetToNeutral(NowUs());
+    {
+        const auto rt = outputRuntime.Stats();
+        std::cout << "\n--- output runtime ---\n"
+                  << "  events dispatched : " << rt.eventsDispatched
+                  << "   droppedLate=" << rt.eventsDroppedLate << "\n"
+                  << "  layers queued     : speaker=" << rt.speakerLayersQueued
+                  << " haptic=" << rt.hapticLayersQueued
+                  << " trigger=" << rt.triggerLayersApplied
+                  << "   failures=" << rt.layerFailures << "\n";
+        if (o.triggerDemo) {
+            const auto ts = triggerRuntime.Stats();
+            std::cout << "  triggers          : applied=" << ts.applied
+                      << " replaced=" << ts.replaced << " expired=" << ts.expired
+                      << " writeFailures=" << ts.writeFailures << "\n"
+                      << "                      (submissions, NOT a claim about how they felt)\n";
+        }
+        const auto voiceHistory = device.RecentVoiceHistory();
+        std::size_t completed = 0, retired = 0, discarded = 0;
+        for (const auto& record : voiceHistory) {
+            if (record.reason == VoiceEndReason::Completed) ++completed;
+            else if (record.reason == VoiceEndReason::RetiredAtCap) ++retired;
+            else ++discarded;
+        }
+        std::cout << "  voice end reasons : playedToTheEnd=" << completed
+                  << " retiredAtCap=" << retired << " droppedOrEvicted=" << discarded
+                  << "   (of " << voiceHistory.size() << " finished voices)\n";
+    }
     ReportRenderStats(device.RenderStats());
     // Leave nothing sounding and give the routing back.
     device.StopRenderThread();
     device.DropPending();
     device.Close();
-    if (routed) ReleaseSpeakerRouting(transport); else transport.Close();
+    // One report hands back everything this process claimed: both triggers
+    // to Off and the audio section released. Doing it through the shared
+    // state is what keeps the trigger release from dropping the routing
+    // release, or the reverse.
+    if (routed) { hidState.ResetToNeutral(); hidState.Submit(transport, true); }
+    transport.Close();
     if (droppedLate) std::cout << "\ndropped-late hits: " << droppedLate << "\n";
     std::cout << "\ndone. This was manual playback -- it measures nothing about in-game detection.\n";
     return 0;
@@ -1530,6 +2151,39 @@ int InspectAudio(const Options& o) {
     std::cout << "A recording is used for the SPEAKER cue only. The haptic waveform stays\n"
                  "synthesised: a kHz metal clang is not something a voice coil reproduces as\n"
                  "an impact, so copying it to the actuators would give a thin buzz.\n";
+    return 0;
+}
+
+/// Write the FINISHED speaker cues -- the exact buffers `--live` plays.
+///
+/// `--write-wav` writes the SYNTHESISED cues, which is a different thing: the
+/// live path loads a recording, rebuilds its ring with ExtendDecayTail and
+/// shapes it, and none of that is in a synthesised dump. Anything that wants
+/// to play what the game plays (the haptic workbench's speaker cue, for one)
+/// needs this buffer, not the raw slice and not the synthesised stand-in.
+int WriteRenderedCues(const Options& o) {
+    GuardCueConfig config = DefaultGuardCueConfig();
+    if (std::ifstream in(o.config); in) {
+        std::stringstream b;
+        b << in.rdbuf();
+        std::string error;
+        if (!ParseGuardCueConfig(b.str(), config, error)) {
+            std::cout << "config error: " << error << "\n";
+            return 2;
+        }
+    }
+    ApplySpeakerOverrides(config, o);
+    const std::uint32_t rate = 48'000;
+    std::error_code ec;
+    std::filesystem::create_directories(o.writeCue, ec);
+    for (const auto& [name, profile] : {std::pair<const char*, const GuardCueProfile&>{"deflect", config.deflect},
+                                        std::pair<const char*, const GuardCueProfile&>{"block", config.block}}) {
+        std::string source;
+        const auto cue = RenderSpeakerCue(profile, rate, config.speakerVolume, source);
+        const auto path = o.writeCue + "/" + name + "_cue.wav";
+        WriteWav(path, cue, rate);
+        std::cout << "  " << name << ": " << source << "\n";
+    }
     return 0;
 }
 
@@ -1695,20 +2349,183 @@ int Live(const Options& o) {
     const auto deflectHaptic = SynthesizeGuardHaptic(config.deflect.haptic, rate, config.hapticStrength);
     const auto blockHaptic = SynthesizeGuardHaptic(config.block.haptic, rate, config.hapticStrength);
 
+    // Loaded here, before the loop, like every other clip: nothing on the
+    // event path opens a file. Only the WAVEFORM changes -- the cue ids, the
+    // presets, the mappings and which events reach them are untouched.
+    BladeHapticPack blade;
+    if (o.bladePcm) {
+        blade = LoadBladeHapticPack(o.bladePcmDir, rate, o.bladeGain, o.bladeCeiling,
+                                    o.bladeTailMs, o.bladeTailDecayPerSecond);
+        std::cout << "  deflect/block haptics: " << blade.report << "\n";
+    } else {
+        std::cout << "  deflect/block haptics: SYNTHESISED (--no-blade-pcm)\n";
+    }
+
     const bool wantSpeaker = o.mode == "speaker" || o.mode == "both";
     const bool wantHaptic = o.mode == "haptic" || o.mode == "both";
     if (wantSpeaker && opts.speakerChannel < 0) { std::cout << "--speaker-channel required\n"; return 2; }
     if (wantHaptic && opts.hapticLeft < 0 && opts.hapticRight < 0) { std::cout << "--haptic-left/right required\n"; return 2; }
 
     HidApiDualSenseTransport transport;
+    // The HID side, owned in one place. MarkPcmHapticsActive is bookkeeping
+    // only: it writes no byte, and crucially it does NOT set HAPTICS_SELECT,
+    // which would take the actuators off the PCM path the cues use.
+    dualsense::DualSenseOutputState hidState;
+    hidState.MarkPcmHapticsActive(wantHaptic);
     // The output-path byte configures the WHOLE endpoint, not just the speaker.
     // Gating this on "the caller wants speaker output" left haptic-only playback
     // silent even though the same channels vibrated during --channel-test, which
     // did send it. So it is always sent.
-    const bool routed = o.speakerRouting && EnableSpeakerRouting(transport, opts.speakerVolume, opts.audioPath);
+    const bool routed =
+        o.speakerRouting && ClaimSpeakerRouting(hidState, transport, opts);
     std::cout << "audio routing report: " << (routed ? "sent" : "not sent")
               << "  (path " << opts.audioPath << ", controller volume 0x" << std::hex
-              << (opts.speakerVolume & 0xFF) << std::dec << ")\n";
+              << (opts.speakerVolume & 0xFF) << std::dec << ")\n"
+              << "  haptic path: " << dualsense::ToString(hidState.HapticPathInUse())
+              << "   (legacy rumble is NOT claimed, so the actuators stay on PCM)\n";
+    // ---- output runtime ---------------------------------------------------
+    // The clips were rendered above, before the loop. The sink only ever hands
+    // the mixer a reference to them; nothing on the event path synthesises,
+    // decodes, opens a file or allocates a clip.
+    DualSenseAudioPcmSink pcmSink(device);
+    if (wantSpeaker) pcmSink.SetSpeakerChannel(opts.speakerChannel);
+    if (wantHaptic) pcmSink.SetHapticChannels(opts.hapticLeft, opts.hapticRight);
+    pcmSink.RegisterCue("deflect.speaker", deflectSpeaker, PcmCueTarget::Speaker);
+    pcmSink.RegisterCue("block.speaker", blockSpeaker, PcmCueTarget::Speaker);
+    RegisterGuardHapticCues(pcmSink, blade, deflectHaptic, blockHaptic);
+    // Rendered here, before the loop, like every other cue -- the polling loop
+    // never synthesises.
+    const auto wireHapticCue = SynthesizeGuardHaptic(WireStartHapticProfile(), rate,
+                                                     config.hapticStrength);
+    pcmSink.RegisterCue(kWireHapticCueId, wireHapticCue, PcmCueTarget::Haptic);
+
+    dualsense::AdaptiveTriggerRuntime triggerRuntime(transport, hidState);
+    if (o.triggerDemo) {
+        // Start from neutral, so a previous run's held effect cannot be
+        // mistaken for this run's output. The audio claim above survives it:
+        // OnReconnect touches the two trigger sections only.
+        triggerRuntime.OnReconnect(NowUs());
+        std::cout << "adaptive-trigger DEMO layers are ON. Those parameters are a\n"
+                     "  demonstration, not a tuned mapping; no game button is remapped.\n";
+    }
+
+    // R2 preparation resistance from the SELECTED prosthetic. This is
+    // selection state, not use: nothing below records a shot, a swing or a
+    // hit, and pressing R2 is never treated as one.
+    std::optional<SekiroProstheticReader> prostheticReader;
+    if (o.prosthetic) {
+        prostheticReader.emplace(reader, reader, live_detail::MakeWorldChrManSpec(mainModule.name),
+                                 live_detail::KnownGoodIdentity(), identity, mainModule.baseAddress);
+        const auto primedTool = prostheticReader->Prime();
+        std::cout << "prosthetic reader: " << ToString(primedTool) << "\n"
+                  << "  R2 prep: Loaded Shuriken(70000) weapon catch zones "
+                  << int(o.prostheticTrigger.shurikenStartZone) << ".."
+                  << int(o.prostheticTrigger.shurikenEndZone) << " strength "
+                  << int(o.prostheticTrigger.shurikenStrength)
+                  << " | Loaded Spear(78000) feedback from zone "
+                  << int(o.prostheticTrigger.spearStartZone) << " strength "
+                  << int(o.prostheticTrigger.spearStrength) << "\n"
+                  << "  every other prosthetic, and any unknown selection, releases it.\n";
+        if (primedTool != RootResolveResult::Resolved) {
+            std::cout << "  not primed -- no preparation resistance will be applied\n";
+            prostheticReader.reset();
+        }
+    }
+
+    // Wire actions. Detection and logging ONLY: the field below distinguishes
+    // a real wire action from a button press with no target, from a usable
+    // target nobody grappled to, and from ordinary jumps and falls -- but what
+    // it should FEEL like has not been decided, so nothing is driven from it.
+    // 의수 사용(공격) 리더. 발사 큐를 싣는 경우에만 켠다 -- 쓸 곳 없는 읽기를
+    // 매 5 ms 돌릴 이유가 없다.
+    std::optional<SekiroProstheticActionReader> toolActionReader;
+    ProstheticActionDetector toolActionDetector;
+    std::uint64_t toolAttacks = 0, toolReadies = 0;
+    if (!o.prostheticCueDir.empty()) {
+        toolActionReader.emplace(reader, reader, live_detail::MakeWorldChrManSpec(mainModule.name),
+                                 live_detail::KnownGoodIdentity(), identity,
+                                 mainModule.baseAddress);
+        const auto primedAction = toolActionReader->Prime();
+        std::cout << "prosthetic action reader: " << ToString(primedAction)
+                  << "  (SprjChrActionRequestModule +0xC8)\n";
+        if (primedAction != RootResolveResult::Resolved) {
+            std::cout << "  not primed -- attack cues will not fire\n";
+            toolActionReader.reset();
+        }
+    }
+
+    std::optional<SekiroWireActionReader> wireReader;
+    WireActionEventDetector wireDetector;
+    if (o.wire) {
+        wireReader.emplace(reader, reader, live_detail::MakeWorldChrManSpec(mainModule.name),
+                           live_detail::KnownGoodIdentity(), identity, mainModule.baseAddress);
+        const auto primedWire = wireReader->Prime();
+        std::cout << "wire reader: " << ToString(primedWire)
+                  << "  (CSWireActionModule +0x1c0; start/end only -- shoot, attach,\n"
+                     "  pull and arrive are NOT separable from this field)\n";
+        if (primedWire != RootResolveResult::Resolved) {
+            std::cout << "  not primed -- wire actions will not be logged\n";
+            wireReader.reset();
+        }
+    }
+
+    // 의수 선택 큐. 확인된 두 개(수리검 70000, 창 78000)만 싣는다 -- 나머지는
+    // 무엇인지 모르고, 모르는 것에 파형을 붙이는 것은 추측이다.
+    ToolCuePack switchCue, shurikenCue, spearCue, axeCue;
+    if (!o.prostheticCueDir.empty()) {
+        switchCue = LoadToolCue(o.prostheticCueDir, "tool_switch.wav", rate);
+        shurikenCue = LoadToolCue(o.prostheticCueDir, "shuriken.wav", rate);
+        spearCue = LoadToolCue(o.prostheticCueDir, "spear.wav", rate);
+        axeCue = LoadToolCue(o.prostheticCueDir, "axe.wav", rate);
+        std::cout << "prosthetic cues:\n"
+                  << "    switch  " << switchCue.report << "   <- when you change tool\n"
+                  << "    attack  " << shurikenCue.report << "\n"
+                  << "    attack  " << spearCue.report << "\n"
+                  << "    attack  " << axeCue.report << "\n"
+                  << "  attack cues fire on the ATTACK code, not the ready code and\n"
+                  << "  not on R2 -- see SekiroProstheticActionReader.hpp.\n";
+        if (switchCue.loaded)
+            pcmSink.RegisterStereoCue(kToolSwitchCueId, switchCue.left, switchCue.right);
+        if (shurikenCue.loaded)
+            pcmSink.RegisterStereoCue(kToolShurikenCueId, shurikenCue.left, shurikenCue.right);
+        if (spearCue.loaded)
+            pcmSink.RegisterStereoCue(kToolSpearCueId, spearCue.left, spearCue.right);
+        if (axeCue.loaded)
+            pcmSink.RegisterStereoCue(kToolAxeCueId, axeCue.left, axeCue.right);
+    }
+
+    auto profile = BuildGuardProfile(config, wantSpeaker, wantHaptic, o.triggerDemo,
+                                          o.wire && o.wireHaptic && wantHaptic);
+    // 바꿈 큐 하나 + 무기별 발사 큐. 매핑은 이벤트 하나에 프리셋 하나다.
+    for (const auto& [cueId, presetId, eventId, loaded] :
+         {std::tuple<const char*, const char*, const char*, bool>{
+              kToolSwitchCueId, kToolSwitchPresetId, kToolSwitchedEventId, switchCue.loaded},
+          std::tuple<const char*, const char*, const char*, bool>{
+              kToolShurikenCueId, kToolShurikenPresetId, kToolFiredShurikenEventId,
+              shurikenCue.loaded},
+          std::tuple<const char*, const char*, const char*, bool>{
+              kToolSpearCueId, kToolSpearPresetId, kToolFiredSpearEventId, spearCue.loaded},
+          std::tuple<const char*, const char*, const char*, bool>{
+              kToolAxeCueId, kToolAxePresetId, kToolFiredAxeEventId, axeCue.loaded}}) {
+        if (!loaded || !wantHaptic) continue;
+        profile.mappings.AddMapping({kGameId, eventId, presetId});
+        OutputPreset preset;
+        preset.presetId = presetId;
+        preset.displayName = "Prosthetic selection";
+        PcmHapticOutputLayer layer;
+        layer.cueId = cueId;
+        layer.gain = 1.0f;      // 파형에 이미 들어 있다; 두 번 곱하지 않는다
+        preset.pcmHaptic.push_back(layer);
+        profile.presets.AddPreset(preset);
+    }
+    OutputRuntimeConfig runtimeConfig;
+    runtimeConfig.maxOutputLatencyUs = config.maxOutputLatencyUs;
+    OutputRuntime outputRuntime(profile.mappings, profile.presets, &pcmSink,
+                                o.triggerDemo ? &triggerRuntime : nullptr,
+                                o.triggerDemo ? &hidState : nullptr, runtimeConfig);
+    for (const auto& problem : outputRuntime.Bind())
+        std::cout << "  preset \"" << problem.presetId << "\": " << problem.message << "\n";
+
     // ---- detection -------------------------------------------------------
     GuardDetectorConfig detectorConfig;
     detectorConfig.mode = OccurrenceMode::Pulse;   // +0x3C is a one-frame pulse
@@ -1717,6 +2534,14 @@ int Live(const Options& o) {
     // would interleave two fights into one nonsense sequence.
     std::map<std::uintptr_t, GuardOutcomeEventDetector> enemyDetectors;
     std::uint64_t enemyDeflects = 0, enemyBlocks = 0;
+    // Where enemy reactions actually go. The reader counts RAW pulse edges;
+    // these count what happened to them afterwards, so "the reader saw 51
+    // edges and 2 events came out" can be attributed instead of guessed at.
+    std::uint64_t enemyUnresolved = 0;     // detector could not classify it
+    std::uint64_t enemyLateDropped = 0;    // older than the output budget
+    std::uint64_t enemyObservations = 0;   // samples handed to a detector
+    std::uint64_t enemyPulseObs = 0;       // ... of which had a non-zero pulse
+    std::uint64_t enemyContinuityBreaks = 0;
     std::int64_t nextRediscoverUs = 0;
 
     // Windows' default timer granularity is ~15.6 ms, so a 5 ms sleep loop
@@ -1732,6 +2557,24 @@ int Live(const Options& o) {
     std::uint64_t deflects = 0, blocks = 0, unresolved = 0;
     GuardReadStatus lastStatus = GuardReadStatus::Ok;
     bool reportedStatus = false;
+    std::int64_t nextProstheticPollUs = started;
+    bool prostheticPrepActive = false;
+    std::uint32_t prostheticPrepId = kNoEquipId;
+    // 선택 큐는 준비 저항과 따로 센다. 준비 저항은 "무엇이 골라져 있나" 의
+    // 상태이고, 큐는 "방금 바뀌었다" 의 순간이라 다른 것이다.
+    std::uint32_t prostheticCueEquipId = kNoEquipId;
+    std::uint64_t prostheticCueGeneration = 0;
+    bool prostheticCueBaselined = false;
+    std::uint64_t prostheticCues = 0;
+    std::uint64_t prostheticGeneration = 0;
+    std::uint64_t prostheticEffectId = 0;
+    std::uint64_t prostheticApplies = 0, prostheticReleases = 0;
+    std::uint64_t wireStarts = 0, wireEnds = 0, wireUnobserved = 0;
+    std::uint64_t wireEffectId = 0;
+    WirePrepPolicy wirePrepPolicy;
+    bool wireLaunchedThisTick = false;
+    std::uint64_t wirePrepApplies = 0, wirePrepReleases = 0, wirePrepRearms = 0;
+    std::int64_t wirePrepWriteWorstUs = 0, wirePrepPollWorstUs = 0;
 
     while (o.liveSeconds <= 0 || NowUs() - started < static_cast<std::int64_t>(o.liveSeconds) * 1'000'000) {
         const auto now = NowUs();
@@ -1764,6 +2607,259 @@ int Live(const Options& o) {
         ++intervalCount;
         worstIntervalUs = std::max(worstIntervalUs, interval);
 
+        // Layer start offsets and trigger expiries. Both write only when
+        // something is actually due, so the 5 ms grid is not disturbed.
+        //
+        // The trigger runtime is ticked explicitly: OutputRuntime only owns it
+        // in --trigger-demo, and without this a wire or prosthetic effect with
+        // a lifetime would never release itself.
+        outputRuntime.Tick(now);
+        triggerRuntime.Tick(now);
+
+        if (prostheticReader && now >= nextProstheticPollUs) {
+            nextProstheticPollUs = now + static_cast<std::int64_t>(o.prostheticPollMs) * 1000;
+            const auto tool = prostheticReader->Poll();
+            const auto prep = PrepForSelection(tool.selectedEquipId, tool.Ok(),
+                                               o.prostheticTrigger);
+            // Key on what was actually APPLIED, so an unchanged selection does
+            // not re-apply the same effect every poll -- that would replace the
+            // live effect a few times a second and churn HID writes.
+            // 선택이 바뀌었을 때만 큐를 낸다.
+            //
+            // 첫 관측은 기준선일 뿐이다 -- 시작할 때 이미 수리검이 골라져
+            // 있었던 것은 바꾼 것이 아니다. 읽기 실패와 객체 교체(로딩/사망)도
+            // 마찬가지로 기준선을 다시 잡는다. 그렇게 하지 않으면 불러오기가
+            // 끝날 때마다 "바꿨다" 가 한 번씩 나간다.
+            if (!tool.Ok() || tool.generation != prostheticCueGeneration) {
+                prostheticCueGeneration = tool.generation;
+                prostheticCueBaselined = tool.Ok();
+                prostheticCueEquipId = tool.selectedEquipId;
+            } else if (!prostheticCueBaselined) {
+                prostheticCueBaselined = true;
+                prostheticCueEquipId = tool.selectedEquipId;
+            } else if (tool.selectedEquipId != prostheticCueEquipId) {
+                prostheticCueEquipId = tool.selectedEquipId;
+                // 어느 의수로 갔든 같은 알림이다. 무엇으로 갔는지는 로그의
+                // 장비 id 가 말하고, 손에는 "바뀌었다" 만 오면 된다 -- 무기의
+                // 성격은 쐈을 때 오는 것이지 고를 때 오는 것이 아니다.
+                if (!o.prostheticCueDir.empty()) {
+                    const auto dispatched =
+                        outputRuntime.Handle(MakeToolEvent(kToolSwitchedEventId, now), NowUs());
+                    ++prostheticCues;
+                    std::cout << "  [" << (now - started) / 1000 << "ms] tool SWITCHED to "
+                              << tool.selectedEquipId << "  layers="
+                              << dispatched.layersDispatched << "/" << dispatched.layersTotal
+                              << "\n";
+                }
+            }
+
+            const bool same = prep.active == prostheticPrepActive &&
+                              prep.equipId == prostheticPrepId &&
+                              tool.generation == prostheticGeneration;
+            if (!same) {
+                prostheticPrepActive = prep.active;
+                prostheticPrepId = prep.equipId;
+                prostheticGeneration = tool.generation;
+                if (prep.active) {
+                    const auto applied = triggerRuntime.Apply(
+                        dualsense::TriggerSide::Right, prep.spec,
+                        dualsense::kHoldUntilReplaced, now);
+                    prostheticEffectId = applied.accepted ? applied.effectId : 0;
+                    std::cout << "  [" << (now - started) / 1000 << "ms] R2 prep: "
+                              << prep.reason << "  ("
+                              << (applied.accepted ? "applied" : "FAILED")
+                              << " id=" << applied.effectId << ")\n";
+                    ++prostheticApplies;
+                } else {
+                    if (prostheticEffectId != 0)
+                        triggerRuntime.Cancel(dualsense::TriggerSide::Right,
+                                              prostheticEffectId, now);
+                    else
+                        triggerRuntime.CancelSide(dualsense::TriggerSide::Right, now);
+                    prostheticEffectId = 0;
+                    std::cout << "  [" << (now - started) / 1000 << "ms] R2 prep released: "
+                              << prep.reason;
+                    if (prep.equipId != kNoEquipId) std::cout << " (id " << prep.equipId << ")";
+                    std::cout << "\n";
+                    ++prostheticReleases;
+                }
+            }
+        }
+
+        // 공격 코드는 10 ms 남짓만 머문다. 5 ms 루프마다 읽어야 두 번은 본다.
+        if (toolActionReader) {
+            const auto act = toolActionReader->Poll();
+            for (const auto& e : toolActionDetector.Update(
+                     {now, act.Ok(), act.generation, act.actionCode})) {
+                if (e.phase == ProstheticPhase::Ready) {
+                    ++toolReadies;
+                    continue;          // 준비에는 울리지 않는다
+                }
+                const char* eventId =
+                    e.tool == ProstheticTool::Shuriken ? kToolFiredShurikenEventId
+                    : e.tool == ProstheticTool::Spear ? kToolFiredSpearEventId
+                                                      : kToolFiredAxeEventId;
+                const auto dispatched =
+                    outputRuntime.Handle(MakeToolEvent(eventId, e.timestampUs), NowUs());
+                ++toolAttacks;
+                std::cout << "  [" << (now - started) / 1000 << "ms] " << ToString(e.tool)
+                          << " ATTACK  code=" << e.code << "  layers="
+                          << dispatched.layersDispatched << "/" << dispatched.layersTotal
+                          << "\n";
+            }
+        }
+
+        if (wireReader) {
+            const auto wireSample = wireReader->Poll();
+
+            // PREPARATION resistance: L2 holds a catch so the NEXT press has
+            // something to give way against. The rule itself lives in
+            // WirePrepPolicy, where each clause has a test naming the hardware
+            // failure it prevents.
+            if (o.wireTrigger && o.wireTriggerMs < 0) {
+                WirePrepInput prepIn;
+                prepIn.readOk = wireSample.Ok();
+                prepIn.groundTarget = wireSample.groundTarget;
+                prepIn.airTarget = wireSample.airTarget;
+                // 공중 바이트 하나로는 점프와 연속 그래플을 구분하지 못한다.
+                // 실제로 와이어 액션 중인지가 그 구분이다.
+                prepIn.inWireAction = wireSample.inWireAction;
+                // A launch is an EDGE. It is taken from the detector below via
+                // the flag set on the previous tick, so the policy sees it
+                // exactly once.
+                prepIn.launched = wireLaunchedThisTick;
+                wireLaunchedThisTick = false;
+
+                const auto prep = wirePrepPolicy.Update(prepIn);
+                if (prep.reArm) {
+                    // Clear the side first. An identical report is skipped by
+                    // the output state, so re-sending the same effect would
+                    // not reach the device -- and the device is exactly what
+                    // needs telling, because its Weapon effect has latched
+                    // released since the trigger was pulled through.
+                    triggerRuntime.CancelSide(dualsense::TriggerSide::Left, now);
+                    const auto again = triggerRuntime.Apply(
+                        dualsense::TriggerSide::Left,
+                        dualsense::TriggerEffectSpec::MakeWeapon(o.wireTriggerZone,
+                                                                 o.wireTriggerEndZone,
+                                                                 o.wireTriggerStrength),
+                        dualsense::kHoldUntilReplaced, now);
+                    wireEffectId = again.accepted ? again.effectId : 0;
+                    ++wirePrepRearms;
+                    if (!again.accepted) wirePrepPolicy.Reset();
+                    std::cout << "  [" << (now - started) / 1000 << "ms] L2 prep re-arm ("
+                              << prep.reason << ")  id=" << again.effectId << "\n";
+                } else if (prep.changed) {
+                    if (prep.armed) {
+                        const auto beforeWrite = NowUs();
+                        const auto applied = triggerRuntime.Apply(
+                            dualsense::TriggerSide::Left,
+                            dualsense::TriggerEffectSpec::MakeWeapon(o.wireTriggerZone,
+                                                                     o.wireTriggerEndZone,
+                                                                     o.wireTriggerStrength),
+                            dualsense::kHoldUntilReplaced, now);
+                        const auto writeUs = NowUs() - beforeWrite;
+                        wirePrepWriteWorstUs = std::max(wirePrepWriteWorstUs, writeUs);
+                        wirePrepPollWorstUs = std::max(wirePrepPollWorstUs, interval);
+                        wireEffectId = applied.accepted ? applied.effectId : 0;
+                        ++wirePrepApplies;
+                        if (!applied.accepted) {
+                            // The app must not remember an effect the device
+                            // never took.
+                            wirePrepPolicy.Reset();
+                            std::cout << "  [" << (now - started) / 1000
+                                      << "ms] L2 wire prep FAILED: " << applied.error << "\n";
+                        } else {
+                            std::cout << "  [" << (now - started) / 1000 << "ms] L2 prep ON ("
+                                      << prep.reason << ")  id=" << applied.effectId
+                                      << " hidWrite=" << writeUs / 1000
+                                      << "ms pollGap=" << interval / 1000 << "ms\n";
+                        }
+                    } else {
+                        // Release only what this feature owns. A stale id means
+                        // something else took the side over, and forcing it off
+                        // would cut that other effect short -- but leaving the
+                        // resistance on is worse, so the side is cleared when
+                        // the id is not ours any more.
+                        bool released = false;
+                        if (wireEffectId != 0)
+                            released = triggerRuntime.Cancel(dualsense::TriggerSide::Left,
+                                                             wireEffectId, now);
+                        if (!released) triggerRuntime.CancelSide(dualsense::TriggerSide::Left, now);
+                        wireEffectId = 0;
+                        ++wirePrepReleases;
+                        std::cout << "  [" << (now - started) / 1000 << "ms] L2 prep off ("
+                                  << prep.reason << ")  ground=" << (prepIn.groundTarget ? 1 : 0)
+                                  << " air=" << (prepIn.airTarget ? 1 : 0)
+                                  << " inAction=" << (prepIn.inWireAction ? 1 : 0)
+                                  << " read=" << ToString(wireSample.status) << "\n";
+                    }
+                }
+            }
+
+            WireObservation wo;
+            wo.timestampUs = now;
+            wo.readOk = wireSample.Ok();
+            wo.generation = wireSample.generation;
+            wo.inWireAction = wireSample.inWireAction;
+            wo.handle = wireSample.handle;
+            wo.continuityBreak = interval > targetIntervalUs * 4;
+            for (const auto& event : wireDetector.Update(wo)) {
+                std::cout << "  [" << (now - started) / 1000 << "ms] WIRE "
+                          << ToString(event.kind);
+                if (event.kind == WireEventKind::Ended)
+                    std::cout << "  " << event.durationUs / 1000 << "ms";
+                std::cout << "  anchor=0x" << std::hex << event.handle << std::dec;
+
+                if (event.kind == WireEventKind::Started) {
+                    ++wireStarts;
+                    // Hand the launch to the preparation rule as an edge. It
+                    // releases on the next evaluation, which is the same 5 ms
+                    // tick -- the flags themselves stay set for about half the
+                    // flight and are far too late to release on.
+                    wireLaunchedThisTick = true;
+                    // The thump goes through the same event -> mapping ->
+                    // preset -> sink path as everything else; nothing here
+                    // touches the mixer directly.
+                    if (o.wireHaptic && wantHaptic) {
+                        const auto dispatched =
+                            outputRuntime.Handle(MakeWireEvent(event.timestampUs), NowUs());
+                        std::cout << " layers=" << dispatched.layersDispatched << "/"
+                                  << dispatched.layersTotal;
+                    }
+                    // The resistance is a SUSTAINED state for as long as the
+                    // action runs, so it is held rather than given a duration:
+                    // a timer would have to guess how long the flight lasts.
+                    if (o.wireTrigger && o.wireTriggerMs >= 0) {
+                        // The two older timings, kept only for comparison.
+                        const auto lifetime =
+                            o.wireTriggerMs > 0
+                                ? static_cast<std::int64_t>(o.wireTriggerMs) * 1000
+                                : dualsense::kHoldUntilReplaced;
+                        const auto applied = triggerRuntime.Apply(
+                            dualsense::TriggerSide::Left,
+                            dualsense::TriggerEffectSpec::MakeWeapon(o.wireTriggerZone,
+                                                                     o.wireTriggerEndZone,
+                                                                     o.wireTriggerStrength),
+                            lifetime, now);
+                        wireEffectId = (applied.accepted && o.wireTriggerMs == 0)
+                                           ? applied.effectId : 0;
+                        if (!applied.accepted) std::cout << "  L2 FAILED: " << applied.error;
+                    }
+                } else {
+                    if (event.kind == WireEventKind::Ended) ++wireEnds;
+                    else ++wireUnobserved;
+                    // Ended OR ended-unobserved: either way this process stops
+                    // asserting a resistance it can no longer justify.
+                    if (wireEffectId != 0) {
+                        triggerRuntime.Cancel(dualsense::TriggerSide::Left, wireEffectId, now);
+                        wireEffectId = 0;
+                    }
+                }
+                std::cout << "\n";
+            }
+        }
+
         const auto sample = guardReader.Poll();
         if (sample.status != lastStatus || !reportedStatus) {
             if (sample.status != GuardReadStatus::Ok)
@@ -1784,28 +2880,32 @@ int Live(const Options& o) {
         obs.outcome = sample.outcome;
 
         for (const auto& event : detector.Update(obs)) {
-            const auto age = NowUs() - event.timestampUs;
-            if (age > config.maxOutputLatencyUs) {
-                ++lateDrops;      // never flush a stale hit out later
-                std::cout << "  [" << (now - started) / 1000 << "ms] dropped (" << age / 1000 << "ms late)\n";
-                continue;
-            }
-            const bool deflect = event.kind == GuardEventKind::Deflect;
             if (event.kind == GuardEventKind::Unresolved) {
                 ++unresolved;
                 std::cout << "  [" << (now - started) / 1000 << "ms] unresolved (no cue played)\n";
                 continue;
             }
+            const bool deflect = event.kind == GuardEventKind::Deflect;
+            const auto age = NowUs() - event.timestampUs;
             // The previous cue is left alone: a normal new event never stops,
             // ducks or fades what is already sounding. Only the voice cap can
             // shorten a tail, and it fades the quietest one instead of cutting.
-            const auto& profile = deflect ? config.deflect : config.block;
-            if (wantSpeaker) device.Queue(deflect ? deflectSpeaker : blockSpeaker, opts.speakerChannel, 1.0f);
-            if (wantHaptic) device.QueuePair(deflect ? deflectHaptic : blockHaptic,
-                                             opts.hapticLeft, opts.hapticRight, 1.0f, profile.balance);
+            // The late-event budget moved into the runtime, with the same
+            // value read from the same config field.
+            const auto dispatched =
+                outputRuntime.Handle(MakeGuardEvent(deflect, event.timestampUs), NowUs());
+            if (dispatched.outcome == DispatchOutcome::DroppedLate) {
+                ++lateDrops;      // never flush a stale hit out later
+                std::cout << "  [" << (now - started) / 1000 << "ms] dropped (" << age / 1000 << "ms late)\n";
+                continue;
+            }
             (deflect ? deflects : blocks)++;
             std::cout << "  [" << (now - started) / 1000 << "ms] " << (deflect ? "DEFLECT" : "block  ")
-                      << "  latency=" << age / 1000 << "ms voices=" << device.ActiveVoices() << "\n";
+                      << "  latency=" << age / 1000 << "ms voices=" << device.ActiveVoices()
+                      << " id=" << dispatched.correlationId
+                      << " layers=" << dispatched.layersDispatched << "/" << dispatched.layersTotal;
+            if (dispatched.layersFailed > 0) std::cout << " FAILED=" << dispatched.layersFailed;
+            std::cout << "\n";
         }
 
         if (enemyReader) {
@@ -1825,17 +2925,26 @@ int Live(const Options& o) {
                 eo.continuityBreak = interval > targetIntervalUs * 4;
                 eo.occurrence = es.pulse;
                 eo.outcome = es.outcome;
+                ++enemyObservations;
+                if (es.pulse != 0) ++enemyPulseObs;
+                if (eo.continuityBreak) ++enemyContinuityBreaks;
                 auto& det = enemyDetectors.try_emplace(es.character, detectorConfig).first->second;
                 for (const auto& event : det.Update(eo)) {
-                    if (event.kind == GuardEventKind::Unresolved) continue;
-                    if (NowUs() - event.timestampUs > config.maxOutputLatencyUs) { ++lateDrops; continue; }
+                    if (event.kind == GuardEventKind::Unresolved) {
+                        // Counted, not swallowed: an unresolved reaction is a
+                        // reaction the detector saw and could not classify,
+                        // which is a different fact from never seeing one.
+                        ++enemyUnresolved;
+                        continue;
+                    }
                     const bool deflect = event.kind == GuardEventKind::Deflect;
-                    const auto& profile = deflect ? config.deflect : config.block;
-                    if (wantSpeaker)
-                        device.Queue(deflect ? deflectSpeaker : blockSpeaker, opts.speakerChannel, 1.0f);
-                    if (wantHaptic)
-                        device.QueuePair(deflect ? deflectHaptic : blockHaptic,
-                                         opts.hapticLeft, opts.hapticRight, 1.0f, profile.balance);
+                    const auto dispatched =
+                        outputRuntime.Handle(MakeGuardEvent(deflect, event.timestampUs), NowUs());
+                    if (dispatched.outcome == DispatchOutcome::DroppedLate) {
+                        ++lateDrops;
+                        ++enemyLateDropped;
+                        continue;
+                    }
                     (deflect ? enemyDeflects : enemyBlocks)++;
                     std::cout << "  [" << (now - started) / 1000 << "ms] ENEMY "
                               << (deflect ? "DEFLECT" : "block  ") << "  0x" << std::hex
@@ -1846,13 +2955,29 @@ int Live(const Options& o) {
     }
 
     if (enemyReader) enemyReader->StopBackgroundDiscovery();
+    if (toolActionReader) {
+        const auto& ts = toolActionReader->Stats();
+        std::cout << "prosthetic action: attacks=" << toolAttacks << " readies=" << toolReadies
+                  << "  (reads ok=" << ts.ok << " failed=" << ts.failed
+                  << " moduleSearches=" << ts.moduleSearches << ")\n";
+    }
+    // A layer scheduled but not yet started must not escape after the session.
+    for (const auto& event : wireDetector.Finish(NowUs())) { (void)event; ++wireUnobserved; }
+    if (wireEffectId != 0) triggerRuntime.Cancel(dualsense::TriggerSide::Left, wireEffectId, NowUs());
+    wirePrepPolicy.Reset();
+    outputRuntime.DropPending();
+    // Both owners of a trigger effect hand it back. Leaving a preparation
+    // resistance on the controller after the session would be exactly the
+    // "stale effect outlives its state" failure this is built to avoid.
+    if (o.triggerDemo || prostheticReader || wireReader) triggerRuntime.ResetToNeutral(NowUs());
     for (const auto& event : detector.Finish()) { (void)event; ++unresolved; }
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
     const auto renderStats = device.RenderStats();
     device.StopRenderThread();
     device.DropPending();
     device.Close();
-    if (routed) ReleaseSpeakerRouting(transport); else transport.Close();
+    if (routed) { hidState.ResetToNeutral(); hidState.Submit(transport, true); }
+    transport.Close();
 
     timeEndPeriod(1);
     const auto& rs = guardReader.Stats();
@@ -1878,11 +3003,72 @@ int Live(const Options& o) {
                   << " (support " << es.pathSupport << ")"
                   << "  rawPulseEdges=" << es.rawPulseEdges
                   << " nonZeroSamples=" << es.nonZeroPulseSamples << "\n"
+                  << "    observations=" << enemyObservations
+                  << " withPulse=" << enemyPulseObs
+                  << " unresolved=" << enemyUnresolved
+                  << " lateDropped=" << enemyLateDropped
+                  << " vptrRejected=" << es.pulseVptrRejected
+                  << " outcomeUnreadable=" << es.pulseOutcomeUnreadable
+                  << " continuityBreaks=" << enemyContinuityBreaks << "\n"
+                  << "    detectors=" << enemyDetectors.size() << "\n"
                   << "    pathChanges=" << es.pathChanges
                   << "  ambiguousDropped=" << es.ambiguousModules
                   << "  lastDiscovery=" << es.lastDiscoveryUs / 1000 << " ms\n"
                   << "    An enemy event means THAT CHARACTER guarded. It does not prove\n"
                   << "    it guarded your attack.\n";
+    }
+    {
+        const auto rt = outputRuntime.Stats();
+        std::cout << "  output: dispatched=" << rt.eventsDispatched
+                  << " speakerLayers=" << rt.speakerLayersQueued
+                  << " hapticLayers=" << rt.hapticLayersQueued
+                  << " triggerLayers=" << rt.triggerLayersApplied
+                  << " layerFailures=" << rt.layerFailures << "\n";
+        if (o.triggerDemo) {
+            const auto ts = triggerRuntime.Stats();
+            std::cout << "  triggers: applied=" << ts.applied << " replaced=" << ts.replaced
+                      << " expired=" << ts.expired << " writeFailures=" << ts.writeFailures
+                      << "   (submissions, NOT a claim about how they felt)\n";
+        }
+        if (wireReader) {
+            const auto ws = wireReader->Stats();
+            std::cout << "  wire: started=" << wireStarts << " ended=" << wireEnds
+                      << " endedUnobserved=" << wireUnobserved
+                      << "  polls=" << ws.polls << " ok=" << ws.ok << " failed=" << ws.failed
+                      << " moduleSearches=" << ws.moduleSearches << "\n"
+                      << "    L2 prep worst hidWrite=" << wirePrepWriteWorstUs / 1000
+                      << "ms worst pollGap=" << wirePrepPollWorstUs / 1000 << "ms\n"
+                  << "    L2 prep re-arms=" << wirePrepRearms << "\n"
+                  << "    L2 prep applies=" << wirePrepApplies
+                      << " releases=" << wirePrepReleases
+                      << "  (resistance follows target availability; "
+                      << (o.wireTriggerMs < 0 ? "default" : "legacy --wire-ms timing")
+                      << ")\n"
+                  << "    start thump " << (o.wireHaptic ? "on" : "off") << ".\n"
+                  << "    Start and end only. No shoot/attach/pull/arrive phase is claimed,\n"
+                      << "    and endedUnobserved is NOT a completed action.\n";
+        }
+        if (prostheticReader) {
+            std::cout << "  prosthetic switch cues: " << prostheticCues << "\n";
+            const auto ps = prostheticReader->Stats();
+            std::cout << "  prosthetic: applies=" << prostheticApplies
+                      << " releases=" << prostheticReleases
+                      << "  polls=" << ps.polls << " ok=" << ps.ok << " failed=" << ps.failed
+                      << " gameDataSearches=" << ps.playerGameDataSearches
+                      << " gameDataChanges=" << ps.playerGameDataChanges << "\n"
+                      << "    This is SELECTION state only. No use, shot or hit is claimed.\n";
+        }
+        // Per-voice end reasons. "Every cue played to its end" is checked
+        // here rather than inferred from the absence of a complaint.
+        const auto voiceHistory = device.RecentVoiceHistory();
+        std::size_t completed = 0, retired = 0, discarded = 0;
+        for (const auto& record : voiceHistory) {
+            if (record.reason == VoiceEndReason::Completed) ++completed;
+            else if (record.reason == VoiceEndReason::RetiredAtCap) ++retired;
+            else ++discarded;
+        }
+        std::cout << "  voices(last " << voiceHistory.size() << "): playedToTheEnd=" << completed
+                  << " retiredAtCap=" << retired << " droppedOrEvicted=" << discarded << "\n";
     }
     ReportRenderStats(renderStats);
     std::cout << "\n  These are detector outputs, not verified ground truth.\n";
@@ -1951,12 +3137,45 @@ int main(int argc, char** argv) {
         else if (a == "--audio-diag") o.audioDiag = true;
         else if (a == "--overlap-test") o.overlapTest = true;
         else if (a == "--enemy") o.enemy = true;
+        else if (a == "--no-enemy") o.enemy = false;
+        else if (a == "--prosthetic-cue-dir") o.prostheticCueDir = next();
+        else if (a == "--no-blade-pcm") o.bladePcm = false;
+        else if (a == "--blade-pcm-dir") o.bladePcmDir = next();
+        else if (a == "--blade-gain") o.bladeGain = static_cast<float>(std::atof(next().c_str()));
+        else if (a == "--blade-ceiling") o.bladeCeiling = static_cast<float>(std::atof(next().c_str()));
+        else if (a == "--blade-tail-ms") o.bladeTailMs = static_cast<float>(std::atof(next().c_str()));
+        else if (a == "--blade-tail-decay")
+            o.bladeTailDecayPerSecond = static_cast<float>(std::atof(next().c_str()));
+        else if (a == "--no-prosthetic-trigger") o.prosthetic = false;
+        else if (a == "--no-wire") o.wire = false;
+        else if (a == "--no-wire-haptic") o.wireHaptic = false;
+        else if (a == "--no-wire-trigger") o.wireTrigger = false;
+        else if (a == "--wire-zone" || a == "--wire-start") o.wireTriggerZone =
+                     static_cast<std::uint8_t>(std::atoi(next().c_str()));
+        else if (a == "--wire-end") o.wireTriggerEndZone =
+                     static_cast<std::uint8_t>(std::atoi(next().c_str()));
+        else if (a == "--wire-strength") o.wireTriggerStrength =
+                     static_cast<std::uint8_t>(std::atoi(next().c_str()));
+        else if (a == "--wire-ms") o.wireTriggerMs = std::atoi(next().c_str());
+        else if (a == "--shuriken-start") o.prostheticTrigger.shurikenStartZone =
+                     static_cast<std::uint8_t>(std::atoi(next().c_str()));
+        else if (a == "--shuriken-end") o.prostheticTrigger.shurikenEndZone =
+                     static_cast<std::uint8_t>(std::atoi(next().c_str()));
+        else if (a == "--shuriken-strength") o.prostheticTrigger.shurikenStrength =
+                     static_cast<std::uint8_t>(std::atoi(next().c_str()));
+        else if (a == "--spear-start") o.prostheticTrigger.spearStartZone =
+                     static_cast<std::uint8_t>(std::atoi(next().c_str()));
+        else if (a == "--spear-strength") o.prostheticTrigger.spearStrength =
+                     static_cast<std::uint8_t>(std::atoi(next().c_str()));
+        else if (a == "--trigger-demo") o.triggerDemo = true;
         else if (a == "--enemy-rediscover") o.enemyRediscoverSeconds = static_cast<float>(std::atof(next().c_str()));
+        else if (a == "--write-cue") o.writeCue = next();
         else if (a == "--dump-mix") o.dumpMix = next();
         else if (a == "--report-length") o.forceLength = std::atoi(next().c_str());
         else { std::cout << "unknown option: " << a << "\n"; Help(); return 2; }
     }
     if (o.list) return ListDevices();
+    if (!o.writeCue.empty()) return WriteRenderedCues(o);
     if (o.audioDiag) return AudioDiag(o);
     if (o.overlapTest) return OverlapTest(o);
     if (o.probe) return ProbeFormat(o);

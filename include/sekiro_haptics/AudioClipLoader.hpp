@@ -38,6 +38,21 @@ std::vector<float> LoadAudioClipMono(const std::filesystem::path& path,
                                      std::uint32_t targetSampleRate,
                                      AudioClipInfo& outInfo);
 
+/// Two channels, de-interleaved, for assets authored as a LOGICAL left/right
+/// haptic pair rather than as something to listen to.
+///
+/// The mono loader asks the decoder to downmix, which averages the two sides
+/// into one signal and throws away whatever difference between them the asset
+/// was made to carry. Which physical channel each side lands on is the
+/// caller's decision, not this function's.
+///
+/// `outLeft` and `outRight` always come back the same length, and both are
+/// empty when `outInfo.ok` is false. `outInfo.frames` counts FRAMES, so it
+/// matches the length of either side rather than the two added together.
+void LoadAudioClipStereo(const std::filesystem::path& path, std::uint32_t targetSampleRate,
+                         std::vector<float>& outLeft, std::vector<float>& outRight,
+                         AudioClipInfo& outInfo);
+
 /// Peak-normalises to `targetPeak` (no-op when the clip is silent). Handles
 /// input peaks above 1.0. Applied
 /// so a supplied recording and a synthesised cue can be compared at a similar

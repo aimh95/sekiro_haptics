@@ -38,9 +38,15 @@ std::string Hr(const char* what, HRESULT hr) {
 
 } // namespace
 
-std::vector<float> LoadAudioClipMono(const std::filesystem::path& path,
-                                     std::uint32_t targetSampleRate,
-                                     AudioClipInfo& info) {
+namespace {
+
+/// The shared decode. `channels` is what Media Foundation is ASKED for, and
+/// anything else coming back is refused rather than accepted -- the caller
+/// then learns it did not get what it wanted instead of silently being handed
+/// a different layout.
+std::vector<float> LoadInterleaved(const std::filesystem::path& path,
+                                   std::uint32_t targetSampleRate, std::uint32_t channels,
+                                   AudioClipInfo& info) {
     info = AudioClipInfo{};
     if (targetSampleRate < 8'000 || targetSampleRate > 192'000) {
         info.error = "unsupported target sample rate";
@@ -74,28 +80,30 @@ std::vector<float> LoadAudioClipMono(const std::filesystem::path& path,
     hr = MFCreateMediaType(&wanted);
     if (SUCCEEDED(hr)) hr = wanted->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
     if (SUCCEEDED(hr)) hr = wanted->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float);
-    if (SUCCEEDED(hr)) hr = wanted->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 1);
+    if (SUCCEEDED(hr)) hr = wanted->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, channels);
     if (SUCCEEDED(hr)) hr = wanted->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, targetSampleRate);
     if (SUCCEEDED(hr)) hr = wanted->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 32);
-    if (SUCCEEDED(hr)) hr = wanted->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 4);
-    if (SUCCEEDED(hr)) hr = wanted->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, targetSampleRate * 4);
+    if (SUCCEEDED(hr)) hr = wanted->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 4 * channels);
+    if (SUCCEEDED(hr))
+        hr = wanted->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, targetSampleRate * 4 * channels);
     if (SUCCEEDED(hr)) hr = wanted->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
     if (SUCCEEDED(hr))
         hr = reader->SetCurrentMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM),
                                          nullptr, wanted.Get());
-    if (FAILED(hr)) { info.error = Hr("SetCurrentMediaType(mono float)", hr); return {}; }
+    if (FAILED(hr)) { info.error = Hr("SetCurrentMediaType(float)", hr); return {}; }
 
     // Confirm what we were actually given.
     ComPtr<IMFMediaType> actual;
     if (SUCCEEDED(reader->GetCurrentMediaType(
             static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM), &actual))) {
-        UINT32 rate = 0, channels = 0;
+        UINT32 rate = 0, decodedChannels = 0;
         actual->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate);
-        actual->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &channels);
+        actual->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &decodedChannels);
         info.decodedSampleRate = rate;
-        if (rate != targetSampleRate || channels != 1) {
+        if (rate != targetSampleRate || decodedChannels != channels) {
             info.error = "decoder produced " + std::to_string(rate) + " Hz / " +
-                         std::to_string(channels) + " ch instead of the requested mono " +
+                         std::to_string(decodedChannels) + " ch instead of the requested " +
+                         std::to_string(channels) + " ch / " +
                          std::to_string(targetSampleRate) + " Hz";
             return {};
         }
@@ -121,7 +129,7 @@ std::vector<float> LoadAudioClipMono(const std::filesystem::path& path,
         pcm.insert(pcm.end(), samples, samples + count);
         buffer->Unlock();
 
-        if (pcm.size() > targetSampleRate * 30u) {   // 30 s is far beyond a hit sound
+        if (pcm.size() > targetSampleRate * 30u * channels) {   // 30 s is far beyond a hit sound
             info.error = "clip is longer than 30 seconds; refusing";
             return {};
         }
@@ -137,10 +145,33 @@ std::vector<float> LoadAudioClipMono(const std::filesystem::path& path,
         info.peak = std::max(info.peak, std::fabs(s));
     }
     info.clippedInSource = info.peak > 1.0f;
-    info.frames = pcm.size();
+    info.frames = pcm.size() / channels;
     info.ok = !pcm.empty();
     if (pcm.empty()) info.error = "decoded to zero samples";
     return pcm;
+}
+
+} // namespace
+
+std::vector<float> LoadAudioClipMono(const std::filesystem::path& path,
+                                     std::uint32_t targetSampleRate, AudioClipInfo& info) {
+    return LoadInterleaved(path, targetSampleRate, 1, info);
+}
+
+void LoadAudioClipStereo(const std::filesystem::path& path, std::uint32_t targetSampleRate,
+                         std::vector<float>& outLeft, std::vector<float>& outRight,
+                         AudioClipInfo& info) {
+    outLeft.clear();
+    outRight.clear();
+    const std::vector<float> interleaved = LoadInterleaved(path, targetSampleRate, 2, info);
+    if (!info.ok) return;
+    const std::size_t frames = interleaved.size() / 2;
+    outLeft.reserve(frames);
+    outRight.reserve(frames);
+    for (std::size_t i = 0; i < frames; ++i) {
+        outLeft.push_back(interleaved[i * 2]);
+        outRight.push_back(interleaved[i * 2 + 1]);
+    }
 }
 
 void NormalizePeak(std::vector<float>& clip, float targetPeak) {

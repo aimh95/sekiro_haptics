@@ -108,6 +108,15 @@ struct AudioVoice {
     /// Monotonic id, so "the oldest" is a fact rather than a guess about deque
     /// order.
     std::uint64_t sequence = 0;
+    /// The event this voice came from, so an output can be traced back to the
+    /// detection that caused it. Zero when the caller did not supply one.
+    std::uint64_t correlationId = 0;
+    /// When Queue() accepted it, and when its first sample was actually mixed
+    /// into a buffer handed to WASAPI. The gap between them is the queue-to-
+    /// render delay, which is a real, recordable stage -- it is NOT the moment
+    /// sound left the speaker, and nothing here claims it is.
+    std::int64_t queuedUs = 0;
+    std::int64_t firstRenderedUs = 0;
     /// Only ever moved by RETIREMENT -- that is, by the voice cap being hit.
     /// A normal new event does NOT duck anything. When it is used it is a
     /// ramp, never a jump: a step in a waveform is a click.
@@ -115,6 +124,40 @@ struct AudioVoice {
     float duckTarget = 1.0f;
     float duckStep = 0.0f;
     bool retiring = false;
+};
+
+/// Why a voice stopped sounding. Kept per voice rather than only as a total,
+/// because "the clip finished" and "the cap threw it out" are the two things
+/// an overlap complaint has to distinguish, and a total cannot say which
+/// event was affected.
+enum class VoiceEndReason {
+    /// Reached the end of its clip. The normal case.
+    Completed,
+    /// The soft cap faded it out early (see SetVoiceLimit).
+    RetiredAtCap,
+    /// The hard cap removed it outright. A burst or a bug, never normal play.
+    HardDropped,
+    /// DropPending(): device loss, player object replacement, shutdown.
+    Dropped,
+};
+
+const char* ToString(VoiceEndReason reason);
+
+/// One finished voice, for tracing. A bounded ring of these is kept so a
+/// session summary can answer "did every cue play to its end" per event
+/// instead of only in aggregate.
+struct VoiceLifecycleRecord {
+    std::uint64_t correlationId = 0;
+    std::uint64_t sequence = 0;
+    int channel = -1;
+    std::int64_t queuedUs = 0;
+    /// 0 when the voice never got a sample rendered before it ended.
+    std::int64_t firstRenderedUs = 0;
+    std::int64_t endedUs = 0;
+    std::size_t framesPlayed = 0;
+    std::size_t clipFrames = 0;
+    VoiceEndReason reason = VoiceEndReason::Completed;
+    bool PlayedToTheEnd() const { return reason == VoiceEndReason::Completed; }
 };
 
 /// Summed-overlap protection. Deliberately NOT "divide by the number of active
@@ -239,11 +282,30 @@ public:
 
     /// Queue a mono clip onto one channel. Returns false if the channel is
     /// outside the endpoint's channel count -- it never silently retargets.
+    ///
+    /// `clip` is referenced, NOT copied: the caller must keep it alive until
+    /// the voice ends. That is deliberate -- rendering must never wait on an
+    /// allocation, and every cue in this project is synthesised once before
+    /// the loop starts.
     bool Queue(const std::vector<float>& clip, int channel, float gain);
+
+    /// Same, tagged with the event that caused it. The tag is carried through
+    /// to the lifecycle record so an output can be traced back to a detection.
+    bool Queue(const std::vector<float>& clip, int channel, float gain,
+               std::uint64_t correlationId);
 
     /// Queue onto a pair with an optional left/right balance in [-1, 1].
     bool QueuePair(const std::vector<float>& clip, int leftChannel, int rightChannel,
                    float gain, float balance);
+
+    bool QueuePair(const std::vector<float>& clip, int leftChannel, int rightChannel,
+                   float gain, float balance, std::uint64_t correlationId);
+
+    /// The most recent finished voices, oldest first. Bounded (see
+    /// SetLifecycleHistoryLimit); older entries are discarded rather than
+    /// growing without bound in a long session.
+    std::vector<VoiceLifecycleRecord> RecentVoiceHistory() const;
+    void SetLifecycleHistoryLimit(std::size_t records);
 
     /// Fill the shared-mode buffer. Call at least every few milliseconds on
     /// the thread that opened the device. Never blocks on playback finishing.
